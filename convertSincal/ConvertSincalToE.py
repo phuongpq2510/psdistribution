@@ -148,7 +148,15 @@ class Convert:
     def convert_excel_BUS(self,excel):
         ## Sheet BUS
         sheet=self.wb['BUS']
-
+       
+        number_of_column={}
+        column_order = [col[0].column for col in sheet.iter_cols()]
+        for row in sheet.iter_rows(min_row=2,max_row=2):
+            for col_num, cell in enumerate(row):
+                column_name = column_order[col_num]
+                cell_value = cell.value
+                number_of_column[cell_value]=column_name
+    
         # Tạo kiểu căn giữa
         center_alignment = Alignment(horizontal='center', vertical='center')
         
@@ -157,21 +165,21 @@ class Convert:
         for i,node in enumerate(self.Node['Node_ID']):
 
             ##Node_ID
-            self.value_excel(sheet,center_alignment,node,row,1)
+            self.value_excel(sheet,center_alignment,node,row,number_of_column['NO'])
             
             ##Bus_Name
             value1 = self.Node['Name'][i]
-            self.value_excel(sheet,center_alignment,value1,row,2)
+            self.value_excel(sheet,center_alignment,value1,row,number_of_column['NAME'])
 
             ##kV
             value1 = self.Node['Un'][i]
-            self.value_excel(sheet,center_alignment,value1,row,3)
+            self.value_excel(sheet,center_alignment,value1,row,number_of_column['kV'])
 
             ##Shunt
             Shunt=0
             if node in self.Shunt:
                 Shunt = self.Shunt[node]
-            self.value_excel(sheet,center_alignment,Shunt,row,7)
+            self.value_excel(sheet,center_alignment,Shunt,row,number_of_column['Vscheduled[pu]'])
 
             ##PQ
             P=0
@@ -180,37 +188,50 @@ class Convert:
                 P = self.Load[node][0]
                 Q = self.Load[node][1]
                 ##code
-                self.value_excel(sheet,center_alignment,1,row,12)
-            self.value_excel(sheet,center_alignment,P,row,5)
-            self.value_excel(sheet,center_alignment,Q,row,6)
+                self.value_excel(sheet,center_alignment,1,row,number_of_column['CODE'])
+            self.value_excel(sheet,center_alignment,P,row,number_of_column['PLOAD[kw]'])
+            self.value_excel(sheet,center_alignment,Q,row,number_of_column['QLOAD[kvar]'])
             
             ##Code Infeerder
             if node in self.Infeeder:
-                self.value_excel(sheet,center_alignment,3,row,12)
+                self.value_excel(sheet,center_alignment,3,row,number_of_column['CODE'])
             row+=1
 
         return
 
+
+
+
     def convert_excel_LINE(self,excel):
         sheet=self.wb['LINE']
+
+        ## Get_name column
+        number_of_column={}
+        column_order = [col[0].column for col in sheet.iter_cols()]
+        for row in sheet.iter_rows(min_row=2,max_row=2):
+            for col_num, cell in enumerate(row):
+                column_name = column_order[col_num]
+                cell_value = cell.value
+                number_of_column[cell_value]=column_name
+ 
         center_alignment = Alignment(horizontal='center', vertical='center')
         row=3
         column=1
         for key, value in self.Line['Line'].items():
-            print(value)
+
             ## Element line 
-            self.value_excel(sheet,center_alignment,key,row,1)
+            self.value_excel(sheet,center_alignment,key,row,number_of_column['NO'])
             ##frombus tobus
-            i=2
+            i=number_of_column['FROMBUS']
             for values in value:
                 self.value_excel(sheet,center_alignment,values,row,i)
                 i+=1
             ##length
-            self.value_excel(sheet,center_alignment,self.Line['Length'][key],row,6)
+            self.value_excel(sheet,center_alignment,self.Line['Length'][key],row,number_of_column['LENGTH'])
             ## R
-            self.value_excel(sheet,center_alignment,self.Line['r'][key],row,7)
+            self.value_excel(sheet,center_alignment,self.Line['r'][key],row,number_of_column['R(Ohm)'])
             ## X
-            self.value_excel(sheet,center_alignment,self.Line['x'][key],row,8)
+            self.value_excel(sheet,center_alignment,self.Line['x'][key],row,number_of_column['X(Ohm)'])
             row+=1
         
         return
@@ -221,7 +242,7 @@ class Convert:
 
     def main(self,excel):
         self.convert_excel_BUS(excel)
-        print('ok')
+       
         self.convert_excel_LINE(excel)
         self.wb.save(excel)
         self.wb.close()
