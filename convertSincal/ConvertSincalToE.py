@@ -1,8 +1,8 @@
 import sqlite3
 import openpyxl
-import sys
-import pandas as pd
+import shutil
 from openpyxl.styles import Alignment
+import os
 class Convert:
     def __init__(self,db_file,excel):
         self.wb=openpyxl.load_workbook(excel)
@@ -87,12 +87,12 @@ class Convert:
             length[item] = k[0][0]
             r[item] = k[0][1]
             x[item] = k[0][2]
-            print(k[0][1])
+
         res1['Line'] = li
         res1['Length'] = length
         res1['r'] = r
         res1['x'] = x
-        print(res1)
+
         return res1
     def get_load(self):
         res={}
@@ -233,7 +233,6 @@ class Convert:
             ## X
             self.value_excel(sheet,center_alignment,self.Line['x'][key],row,number_of_column['X(Ohm)'])
             row+=1
-        
         return
     def value_excel(self,sheet,center_alignment,value,row,column):
         cell = sheet.cell(row, column)
@@ -247,8 +246,31 @@ class Convert:
         self.wb.save(excel)
         self.wb.close()
         return
+def Set_File():
+
+    ## Creat new file 
+    path = os.getcwd()
+    nguon=path+'\\Default File'
+    dich=path
+    new_name='File New'
+    duong_dan_dich_moi = os.path.join(dich, new_name)
+    shutil.copytree(nguon, duong_dan_dich_moi,dirs_exist_ok=True)
+
+    # copy database to newfile
+    file=path+'\\database.db'
+
+    duong_dan_db=duong_dan_dich_moi+'\\Default_files'
+
+   
+    shutil.copy(file, duong_dan_db)
+
+
+
+    return
+
 if __name__ == '__main__':
     db_file='database.db'
     excel='Inputs12bc_1.xlsx'
     convert=Convert(db_file,excel)
     convert.main(excel)
+    Set_File()
