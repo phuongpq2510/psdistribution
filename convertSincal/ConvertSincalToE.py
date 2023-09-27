@@ -1,3 +1,7 @@
+### ID Node : ID Node
+### The remaining IDs follow the Element's ID
+
+# -------------------------------
 import sqlite3
 import openpyxl
 import shutil
@@ -26,10 +30,12 @@ class Convert:
         self.Load = self.get_load()
         print('Load\n',self.Load)
 
-        ## Key Node, Value:Sn
+        ## Key Node, Value:Elemnt, Sn
         self.Shunt = self.get_shunt()
         print('Shunt\n',self.Shunt)
-        ## Infeeder : Node_ID 
+
+
+        ## Infeeder Element : Node_ID 
         self.Infeeder = self.get_feeder()
         print('Indeeder\n', self.Infeeder)
 
@@ -64,7 +70,18 @@ class Convert:
             for value in k:
                  list1.append(value[0])
             res[item] = list1
-        return res
+
+        res1 = {}
+        res2 = {}
+        for i, item in enumerate(res['Node_ID']):
+            res1[item]=res['Name'][i]
+            res2[item]=res['Un'][i]
+        res3 = {}
+        res3['Node_ID'] = res['Node_ID']
+        res3['Name'] = res1
+        res3['Un'] = res2
+
+        return res3
 
     def get_line(self):
         ## Get Line
@@ -122,18 +139,54 @@ class Convert:
         return res
     def get_feeder(self):
         list1=[]
+        #elemnt
+        res={}
+        #name 
+        res1={}
+        #delta
+        res2={}
+        #u
+        res3={}
+        #final
+        res_f={}
+
         for item in self.Element['Infeeder']:
+
+            ## Get Element : Node ID
             sql=f'SELECT Node_ID FROM Terminal WHERE Element_ID= "{item}"'
             k = self.cursor.execute(sql)   
             for value in k:
-                list1.append(value[0])
-        return list1
+                res[item]=value[0]
+
+            ## Get Name{Element : Name }
+            sql=f'SELECT Name FROM Element WHERE Element_ID= "{item}"'
+            k = self.cursor.execute(sql)
+            for value in k:
+                res1[item]=value[0]
+
+            ## Get Delta, U Infeeder
+            sql=f'SELECT delta,u FROM Infeeder WHERE Element_ID= "{item}"'
+            k = self.cursor.execute(sql)
+            
+            for value in k:
+                res2[item]=value[0]
+                res3[item]=value[1]
+                print(value[0])
+                # res1[item]=value[0]
+
+        res_f['Info']=res
+        res_f['Name']=res1
+        res_f['aGen']=res2
+        res_f['vGen']=res3
+
+        return res_f
         
     def get_shunt(self):
         res = {}
-        
+        res2 = {}
+        res3 = {}
         for item in self.Element['ShuntCondensator']:
-
+            res1 = {}
             ## Get Node ShuntCondensator
             sql=f'SELECT Node_ID FROM Terminal WHERE Element_ID= "{item}"'
             self.cursor.execute(sql)
@@ -143,11 +196,23 @@ class Convert:
             sql=f'SELECT Sn FROM ShuntCondensator WHERE Element_ID= "{item}"'  
             self.cursor.execute(sql)
             Sn = self.cursor.fetchall()
+
             if node[0][0] in res:
-                res[node[0][0]] += Sn[0][0]
+                # Nếu đã tồn tại, thêm giá trị mới vào danh sách tương ứng
+                res[node[0][0]][item] = Sn[0][0]
             else:
-                res[node[0][0]] = Sn[0][0]          
-        return res
+                # Nếu chưa tồn tại, tạo danh sách mới
+                res1[item] = Sn[0][0]
+                res[node[0][0]] = res1
+            ## Get name 
+            sql=f'SELECT Name FROM Element WHERE Element_ID= "{item}"'  
+            
+            self.cursor.execute(sql)
+            name = self.cursor.fetchall()
+            res2[item]=name[0][0]
+        res3['Info']=res
+        res3['Name']=res2
+        return res3
     def get_time_series(self):
         return
 
@@ -167,21 +232,23 @@ class Convert:
         # Tạo kiểu căn giữa
         center_alignment = Alignment(horizontal='center', vertical='center')
         
+        ## Coord X,y
+        Coord=self.Graphic_node()
+        print(Coord)
         row=3
         column=1
         for i,node in enumerate(self.Node['Node_ID']):
 
             ##Node_ID
             self.value_excel(sheet,center_alignment,node,row,number_of_column['ID'])
-            
+
             ##Bus_Name
-            value1 = self.Node['Name'][i]
+            value1 = self.Node['Name'][node]
             self.value_excel(sheet,center_alignment,value1,row,number_of_column['NAME'])
 
             ##kV
-            value1 = self.Node['Un'][i]
+            value1 = self.Node['Un'][node]
             self.value_excel(sheet,center_alignment,value1,row,number_of_column['kV'])
-
             ##PQ
             # P=0
             # Q=0
@@ -193,17 +260,14 @@ class Convert:
 
                 self.value_excel(sheet,center_alignment,P,row,number_of_column['PLOAD [kw]'])
                 self.value_excel(sheet,center_alignment,Q,row,number_of_column['QLOAD [kvar]'])
-            
-            ##Code Infeerder
+            ## X,Y Coord
+            self.value_excel(sheet,center_alignment,Coord[node][0],row,number_of_column['xCoord'])
+            self.value_excel(sheet,center_alignment,Coord[node][1],row,number_of_column['yCoord'])
+            ##Code Infeeder
             # if node in self.Infeeder:
             #     self.value_excel(sheet,center_alignment,3,row,number_of_column['CODE'])
             row+=1
-
         return
-
-
-
-
     def convert_excel_LINE(self,excel):
         sheet=self.wb['LINE']
 
@@ -218,9 +282,16 @@ class Convert:
             self.value_excel(sheet,center_alignment,key,row,number_of_column['ID'])
             ##frombus tobus
             i=number_of_column['BUS_ID1']
+            i1=number_of_column['NAME1']
             for values in value:
                 self.value_excel(sheet,center_alignment,values,row,i)
+     
+                self.value_excel(sheet,center_alignment,self.Node['Name'][values],row,i1)
+                i1+=1
                 i+=1
+
+            ##Name1
+
             ##length
             self.value_excel(sheet,center_alignment,self.Line['Length'][key],row,number_of_column['LENGTH'])
             ## R
@@ -229,15 +300,65 @@ class Convert:
             self.value_excel(sheet,center_alignment,self.Line['x'][key],row,number_of_column['X [Ohm/km]'])
             row+=1
         return
+
+    def convert_excel_SOURCE(self,excel):
+        sheet=self.wb['SOURCE']
+        number_of_column=self.get_name_column(sheet)
+        center_alignment = Alignment(horizontal='center', vertical='center')
+        row=3
+        column=1
+        for key, value in self.Infeeder['Info'].items():
+
+            ## Element line 
+            self.value_excel(sheet,center_alignment,key,row,number_of_column['ID'])
+            self.value_excel(sheet,center_alignment,value,row,number_of_column['BUS_ID'])
+            self.value_excel(sheet,center_alignment,self.Node['Name'][value],row,number_of_column['NAME'])
+            self.value_excel(sheet,center_alignment,self.Node['Un'][value],row,number_of_column['kV'])
+            self.value_excel(sheet,center_alignment,self.Infeeder['vGen'][key]/100,row,number_of_column['vGen [pu]'])
+
+            self.value_excel(sheet,center_alignment,self.Infeeder['aGen'][key],row,number_of_column['aGen [deg]'])
+            row+=1
+        return
+
+    def convert_excel_Shunt(self,excel):
+        sheet=self.wb['SHUNT']
+        number_of_column=self.get_name_column(sheet)
+        center_alignment = Alignment(horizontal='center', vertical='center')
+        row=3
+        column=1
+        for key, value in self.Shunt['Info'].items():
+            for key1,value1 in self.Shunt['Info'][key].items():
+                # Element line 
+                self.value_excel(sheet,center_alignment,key1,row,number_of_column['ID'])
+                self.value_excel(sheet,center_alignment,key,row,number_of_column['BUS_ID'])
+                self.value_excel(sheet,center_alignment,self.Shunt['Name'][key1],row,number_of_column['NAME'])
+                self.value_excel(sheet,center_alignment,self.Node['Un'][key],row,number_of_column['kV'])
+                self.value_excel(sheet,center_alignment,value1,row,number_of_column['Qshunt [kvar]'])
+                row+=1
+        return
+
+    def Graphic_node(self):
+        res={}
+
+        for node_id in self.Node['Node_ID']:
+            sql=f'SELECT NodeStartX,NodeStartY From GraphicNode WHERE Node_ID= "{node_id}"'
+            k = self.cursor.execute(sql)
+            
+            for value in k:
+                res[node_id]=value
+        return res
     def value_excel(self,sheet,center_alignment,value,row,column):
         cell = sheet.cell(row, column)
         cell.value = value
         cell.alignment = center_alignment
 
+
+
     def main(self,excel):
         self.convert_excel_BUS(excel)
-       
         self.convert_excel_LINE(excel)
+        self.convert_excel_Shunt(excel)
+        self.convert_excel_SOURCE(excel)
         self.wb.save(excel)
         self.wb.close()
         return
@@ -296,7 +417,9 @@ def Set_File():
 if __name__ == '__main__':
     excel=Creat_new_excel()
     db_file='database.db'
+    # excel='test.xlsx'
     convert=Convert(db_file,excel)
+   
+    # convert.convert_excel_BUS(excel)
     convert.main(excel)
-
-    Set_File()
+    # Set_File()
