@@ -3,6 +3,8 @@ import openpyxl
 import shutil
 from openpyxl.styles import Alignment
 import os
+import win32com.client as win32
+import sys
 class Convert:
     def __init__(self,db_file,excel):
         self.wb=openpyxl.load_workbook(excel)
@@ -30,6 +32,9 @@ class Convert:
         ## Infeeder : Node_ID 
         self.Infeeder = self.get_feeder()
         print('Indeeder\n', self.Infeeder)
+
+
+
     def connect_db(self,db_file):
         conn=sqlite3.connect(db_file)
         cursor=conn.cursor()
@@ -145,10 +150,8 @@ class Convert:
         return res
     def get_time_series(self):
         return
-    def convert_excel_BUS(self,excel):
-        ## Sheet BUS
-        sheet=self.wb['BUS']
-       
+
+    def get_name_column(self,sheet):
         number_of_column={}
         column_order = [col[0].column for col in sheet.iter_cols()]
         for row in sheet.iter_rows(min_row=2,max_row=2):
@@ -156,7 +159,11 @@ class Convert:
                 column_name = column_order[col_num]
                 cell_value = cell.value
                 number_of_column[cell_value]=column_name
-    
+        return number_of_column
+    def convert_excel_BUS(self,excel):
+        ## Sheet BUS
+        sheet=self.wb['BUS']
+        number_of_column=self.get_name_column(sheet)
         # Tạo kiểu căn giữa
         center_alignment = Alignment(horizontal='center', vertical='center')
         
@@ -165,7 +172,7 @@ class Convert:
         for i,node in enumerate(self.Node['Node_ID']):
 
             ##Node_ID
-            self.value_excel(sheet,center_alignment,node,row,number_of_column['NO'])
+            self.value_excel(sheet,center_alignment,node,row,number_of_column['ID'])
             
             ##Bus_Name
             value1 = self.Node['Name'][i]
@@ -175,26 +182,21 @@ class Convert:
             value1 = self.Node['Un'][i]
             self.value_excel(sheet,center_alignment,value1,row,number_of_column['kV'])
 
-            ##Shunt
-            Shunt=0
-            if node in self.Shunt:
-                Shunt = self.Shunt[node]
-            self.value_excel(sheet,center_alignment,Shunt,row,number_of_column['Vscheduled[pu]'])
-
             ##PQ
-            P=0
-            Q=0
+            # P=0
+            # Q=0
             if node in self.Load:
                 P = self.Load[node][0]
                 Q = self.Load[node][1]
                 ##code
-                self.value_excel(sheet,center_alignment,1,row,number_of_column['CODE'])
-            self.value_excel(sheet,center_alignment,P,row,number_of_column['PLOAD[kw]'])
-            self.value_excel(sheet,center_alignment,Q,row,number_of_column['QLOAD[kvar]'])
+                # self.value_excel(sheet,center_alignment,1,row,number_of_column['CODE'])
+
+                self.value_excel(sheet,center_alignment,P,row,number_of_column['PLOAD [kw]'])
+                self.value_excel(sheet,center_alignment,Q,row,number_of_column['QLOAD [kvar]'])
             
             ##Code Infeerder
-            if node in self.Infeeder:
-                self.value_excel(sheet,center_alignment,3,row,number_of_column['CODE'])
+            # if node in self.Infeeder:
+            #     self.value_excel(sheet,center_alignment,3,row,number_of_column['CODE'])
             row+=1
 
         return
@@ -206,32 +208,25 @@ class Convert:
         sheet=self.wb['LINE']
 
         ## Get_name column
-        number_of_column={}
-        column_order = [col[0].column for col in sheet.iter_cols()]
-        for row in sheet.iter_rows(min_row=2,max_row=2):
-            for col_num, cell in enumerate(row):
-                column_name = column_order[col_num]
-                cell_value = cell.value
-                number_of_column[cell_value]=column_name
- 
+        number_of_column=self.get_name_column(sheet)
         center_alignment = Alignment(horizontal='center', vertical='center')
         row=3
         column=1
         for key, value in self.Line['Line'].items():
 
             ## Element line 
-            self.value_excel(sheet,center_alignment,key,row,number_of_column['NO'])
+            self.value_excel(sheet,center_alignment,key,row,number_of_column['ID'])
             ##frombus tobus
-            i=number_of_column['FROMBUS']
+            i=number_of_column['BUS_ID1']
             for values in value:
                 self.value_excel(sheet,center_alignment,values,row,i)
                 i+=1
             ##length
             self.value_excel(sheet,center_alignment,self.Line['Length'][key],row,number_of_column['LENGTH'])
             ## R
-            self.value_excel(sheet,center_alignment,self.Line['r'][key],row,number_of_column['R(Ohm)'])
+            self.value_excel(sheet,center_alignment,self.Line['r'][key],row,number_of_column['R [Ohm/km]'])
             ## X
-            self.value_excel(sheet,center_alignment,self.Line['x'][key],row,number_of_column['X(Ohm)'])
+            self.value_excel(sheet,center_alignment,self.Line['x'][key],row,number_of_column['X [Ohm/km]'])
             row+=1
         return
     def value_excel(self,sheet,center_alignment,value,row,column):
@@ -246,6 +241,40 @@ class Convert:
         self.wb.save(excel)
         self.wb.close()
         return
+def Creat_new_excel():
+    path = os.getcwd()
+    path_default=path+'\\Default.xlsx'
+    path_new=path+'\\Result_File.xlsx'
+
+    ## Check File tồn tại hay chưa 
+    if os.path.isfile(path_new):
+        
+        base_name, extension = os.path.splitext(path_new)
+        path_new = f"{base_name}_1{extension}"
+        counter = 1
+        while os.path.isfile(path_new):
+            counter += 1
+            path_new = f"{base_name}_{counter}{extension}"
+
+
+    ## Copy File default
+    try:
+        # Tạo một phiên làm việc với Excel
+        excel = win32.gencache.EnsureDispatch('Excel.Application')
+
+        # Mở tệp Excel mẫu
+        wb = excel.Workbooks.Open(path_default)
+
+        # Tạo một bản sao của tệp Excel mẫu
+        wb.SaveAs(path_new)
+
+        wb.Close()
+        excel.Quit()
+
+    except Exception as e:
+        print(f"Error: {e}")
+
+    return path_new
 def Set_File():
 
     ## Creat new file 
@@ -260,17 +289,14 @@ def Set_File():
     file=path+'\\database.db'
 
     duong_dan_db=duong_dan_dich_moi+'\\Default_files'
-
-   
     shutil.copy(file, duong_dan_db)
-
-
 
     return
 
 if __name__ == '__main__':
+    excel=Creat_new_excel()
     db_file='database.db'
-    excel='Inputs12bc_1.xlsx'
     convert=Convert(db_file,excel)
     convert.main(excel)
+
     Set_File()
