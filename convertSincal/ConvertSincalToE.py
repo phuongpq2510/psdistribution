@@ -171,7 +171,7 @@ class Convert:
             for value in k:
                 res2[item]=value[0]
                 res3[item]=value[1]
-                print(value[0])
+         
                 # res1[item]=value[0]
 
         res_f['Info']=res
@@ -233,8 +233,7 @@ class Convert:
         center_alignment = Alignment(horizontal='center', vertical='center')
         
         ## Coord X,y
-        Coord=self.Graphic_node()
-        print(Coord)
+        Coord=self.Graphic_node()  
         row=3
         column=1
         for i,node in enumerate(self.Node['Node_ID']):
@@ -276,6 +275,8 @@ class Convert:
         center_alignment = Alignment(horizontal='center', vertical='center')
         row=3
         column=1
+
+        BucklePoint=self.Graphic_Line()
         for key, value in self.Line['Line'].items():
 
             ## Element line 
@@ -298,6 +299,13 @@ class Convert:
             self.value_excel(sheet,center_alignment,self.Line['r'][key],row,number_of_column['R [Ohm/km]'])
             ## X
             self.value_excel(sheet,center_alignment,self.Line['x'][key],row,number_of_column['X [Ohm/km]'])
+            ## Buckle Point
+            if key in BucklePoint:
+
+                self.value_excel(sheet,center_alignment,BucklePoint[key][0],row,number_of_column['xCoord'])
+                self.value_excel(sheet,center_alignment,BucklePoint[key][1],row,number_of_column['yCoord'])
+    
+            ## R
             row+=1
         return
 
@@ -346,6 +354,33 @@ class Convert:
             
             for value in k:
                 res[node_id]=value
+        return res
+
+    def Graphic_Line(self):
+        res={}
+        sql=f'SELECT GraphicTerminal_ID,PosX,PosY From GraphicBucklePoint'
+        self.cursor.execute(sql)
+        k = self.cursor.fetchall()
+        for value in k:
+        
+            sql1=f'SELECT Element_ID From Terminal WHERE Terminal_ID= "{value[0]}"'
+    
+            k1= self.cursor.execute(sql1)
+            k1=self.cursor.fetchall()
+            if k1[0][0] in res:
+
+                res[k1[0][0]][0].append(value[1])
+                res[k1[0][0]][1].append(value[2])
+            else:
+                res[k1[0][0]]=[]
+                res[k1[0][0]].append([value[1]])
+                res[k1[0][0]].append([value[2]])
+
+        for key in res:        
+            for i in range(len(res[key])):
+                    # Chuyển mỗi danh sách con thành một chuỗi, các phần tử cách nhau bằng dấu cách
+                    res[key][i] = ' '.join(map(str, res[key][i]))    
+       
         return res
     def value_excel(self,sheet,center_alignment,value,row,column):
         cell = sheet.cell(row, column)
@@ -420,6 +455,6 @@ if __name__ == '__main__':
     # excel='test.xlsx'
     convert=Convert(db_file,excel)
    
-    # convert.convert_excel_BUS(excel)
+    # convert.Graphic_Line()
     convert.main(excel)
-    # Set_File()
+    Set_File()
