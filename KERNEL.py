@@ -20,8 +20,12 @@ ARGVS = PARSER_INPUTS.parse_known_args()[0]
 #
 RATEC = 100/math.sqrt(3)
 
+##def checkLoop(busHnd,bus,br)
+## print(busCx)
+##        print(braCx)
+
 #
-def __checkLoop__(busHnd,bus,br):
+def checkLoop(busHnd,bus,br):
     setBusChecked = set()
     setBrChecked = set()
     for o1 in busHnd:
@@ -47,21 +51,23 @@ def __checkLoop__(busHnd,bus,br):
                 setBusChecked.update(tb2)
                 tb1=tb2.copy()
     return None
+
 #
-def __findBusConnected__(bi1,bset,lset):
+def findBusConnected(bi1,bset,lset):
     ## find all bus connected to Bus [b1]
-    res = set(bi1)
-    ba = set(bi1)
+    if type(bi1)==int:
+        res = {bi1}
+        ba = {bi1}
+    else:
+        res = set(bi1)
+        ba = set(bi1)
     while True:
         ba2 = set()
         for b1 in ba:
             for li in bset[b1]:
-                try:
-                    for bi in lset[li]:
-                        if bi not in res:
-                            ba2.add(bi)
-                except:
-                    pass
+                for bi in lset[li]:
+                    if bi not in res:
+                        ba2.add(bi)
         if ba2:
             res.update(ba2)
             ba=ba2
@@ -69,40 +75,22 @@ def __findBusConnected__(bi1,bset,lset):
             break
     return res
 #
-def getIsland():
-
-    return
-#
-def __getLineISL__(busC0,setSlack):
+def getIsland(busC0,busSlack,flagSlack=False):
     lineISL = set() # line can not be off => ISLAND
     busC = busC0.copy()
-    if len(setSlack)==1:
-        while True:
-            n1 = len(lineISL)
-            for k,v in busC.items():
+    while True:
+        n1 = len(lineISL)
+        for k,v in busC.items():
+            if flagSlack or k not in busSlack:
                 if len(v)==1:
                     lineISL.update(v)
-            if n1==len(lineISL):
-                break
-            busc1 = dict()
-            for k,v in busC.items():
-                if len(v)!=1:
-                    busc1[k]=v-lineISL
-            busC = busc1.copy()
-    else:
-        while True:
-            n1 = len(lineISL)
-            for k,v in busC.items():
-                if k not in setSlack:
-                    if len(v)==1:
-                        lineISL.update(v)
-            if n1==len(lineISL):
-                break
-            busc1 = dict()
-            for k,v in busC.items():
-                if len(v)!=1:
-                    busc1[k]=v-lineISL
-            busC = busc1.copy()
+        if n1==len(lineISL):
+            break
+        busc1 = dict()
+        for k,v in busC.items():
+            if (not flagSlack and k in busSlack) or len(v)!=1:
+                busc1[k]=v-lineISL
+        busC = busc1.copy()
     return lineISL,busC
 #
 def readSetting(wbInput,sh1,nmax=500):
@@ -168,20 +156,25 @@ class DATAP:
         self.aprofile = readInput1Sheet(wbInput,'PROFILE')
         self.ashuntPla = readInput1Sheet(wbInput,'SHUNT_PLACEMENT')
         """
-        self.busC1        connect of BUS  {b1:[l1,l2,..]}
-        self.busC2                    {b1:{l1,l2,..} set format
-        self.braC1        connect of BRANCH (LINE/X2,..)                {l1:[b1,b2] }
-        self.busC_loop    bus of loop
+        self.busC1       connect of BUS                  {b1:{l1,l2,..}
+        self.braC1       connect of BRANCH (LINE/X2,..)  {l1:[b1,b2] }
+        self.busC0       ignore island bus/branch
+        self.braC0       ignore island bus/branch
+        self.busC2       ignore brOff
+        self.braC2       ignore brOff
+        self.braA2       all branch ignore brOff
+
         self.brIsland     br Island
-        self.brLoop       br Loop
+        self.brLoop       br loop
         self.brLine        []
         self.brTrf2        []
         self.brTrf3        []
         self.busSlack      []
         self.busAllLst     []
         self.busAllSet     set()
+        self.busAll0       set()     ignore island bus/branch
         self.busLoadSet    set()
-        self.brAllSet     set()
+        self.brAllSet      set()
         """
         #
         self.__checkData__()
@@ -204,9 +197,8 @@ class DATAP:
                     self.busSlack.append(self.asource['BUS_ID'][i])
         print('busSlack:',self.busSlack)
         #-----------------------------------------------------------------------
-        self.busC1 = {b1:[] for b1 in self.busAllLst} # connect of BUS  {b1:[l1,l2,..]}
-        self.busC2 = {b1:set() for b1 in self.busAllLst} #{b1:{l1,l2,..} set format
-        self.braC1 = {} # connect of BRANCH (LINE/X2,..)                {l1:[b1,b2] }
+        self.busC1 = {b1:set() for b1 in self.busAllLst}
+        self.braC1 = {}
 
         # LINE
         self.brLine = []
@@ -215,8 +207,8 @@ class DATAP:
                 l1 = self.aline['ID'][i]
                 b1 = self.aline['BUS_ID1'][i]
                 b2 = self.aline['BUS_ID2'][i]
-                self.busC1[b1].append(l1)
-                self.busC1[b2].append(l1)
+                self.busC1[b1].add(l1)
+                self.busC1[b2].add(l1)
                 self.braC1[l1] = [b1,b2]
                 self.brLine.append(l1)
         # TRF2
@@ -226,8 +218,8 @@ class DATAP:
                 l1 = 100000+self.atrf2['ID'][i]
                 b1 = self.atrf2['BUS_ID1'][i]
                 b2 = self.atrf2['BUS_ID2'][i]
-                self.busC1[b1].append(l1)
-                self.busC1[b2].append(l1)
+                self.busC1[b1].add(l1)
+                self.busC1[b2].add(l1)
                 self.braC1[l1] = [b1,b2]
                 self.brTrf2.append(l1)
         # TRF3
@@ -238,27 +230,35 @@ class DATAP:
                 b1 = self.atrf3['BUS_ID1'][i]
                 b2 = self.atrf3['BUS_ID2'][i]
                 b3 = self.atrf3['BUS_ID3'][i]
-                self.busC1[b1].append(l1)
-                self.busC1[b2].append(l1)
-                self.busC1[b3].append(l1)
+                self.busC1[b1].add(l1)
+                self.busC1[b2].add(l1)
+                self.busC1[b3].add(l1)
                 self.braC1[l1] = [b1,b2,b3]
                 self.brTrf3.append(l1)
         #
-        for k,v in self.busC1.items():
-            self.busC2[k]= set(v)
-
-        #
-        self.brIsland,self.busC_loop = __getLineISL__(self.busC2,self.busSlack)
         self.brAllSet = set(self.braC1.keys())
+        #
+        bra,self.busC0 = getIsland(self.busC1,self.busSlack,flagSlack=False)
+        self.braC0 = self.braC1.copy()
+        for br1 in bra:
+            self.braC0.pop(br1)
+        #
+        self.busAll0 = set(self.busC0.keys())
+        #
+        self.brIsland,_ = getIsland(self.busC1,self.busSlack,flagSlack=len(self.busSlack)==1)
         self.brLoop = self.brAllSet - self.brIsland
-        print(self.brIsland)
-        #print(self.brLoop)
-        #print(self.busC1 )
-        r1 = __findBusConnected__(self.busSlack,self.busC1,self.braC1)
-        ri = list(self.busAllSet-r1)
+        #
+        print('brIsland: ',self.brIsland)
+        print('brLoop:',self.brLoop)
+        #
+        r1 = findBusConnected(self.busSlack,self.busC1,self.braC1)
+        ri = self.busAllSet-r1
         if ri:
-            raise Exception('\nCheck Input Data ISLAND found with bus(es): '+str(ri))
-
+            rp = '\nCheck Input Data ISLAND found with bus(es): '
+            for b1 in ri:
+                rp+='\n\t'+self.strBus(b1)
+            raise Exception(rp)
+    #
     def run1Config_WithObjective(self,lineOff=[],shuntOff=[],varFlag=None,option=None,fo=''):
         if varFlag is not None:
             if len(varFlag)!=self.nVar:
@@ -288,70 +288,130 @@ class DATAP:
         return v1
 
     #
-    def checkLoopIsland(self,brOff):
+    def checkLoopIsland(self,brOff,verbose=True):
         # check island/loop multi slack ----------------------------------------
-        if brOff.intersection(self.brIsland):
+        bri = brOff.intersection(self.brIsland)
+        if bri:
+            if verbose:
+                print('\nCheck Input Data ISLAND: ')
+                for br1 in bri:
+                    print('\t',self.strBranch(br1))
             return 'ISLAND'
+
         # brOff must be in brLoop
         if len(brOff.intersection(self.brLoop))==0:
+            if verbose:
+                brt = self.brLoop-brOff
+                print('\nCheck Input Data LOOP found with branches: ')
+                for br1 in brt:
+                    print('\t',self.strBranch(br1))
             return 'LOOP'
 
         # check ISLAND
-        braC1 = self.braC1.copy()
+        braCx = self.braC0.copy()
         for br1 in brOff:
-            braC1.pop(br1)
-
-        r1 = __findBusConnected__(self.busSlack,self.busC1,braC1)
-        ri = list(self.busAllSet-r1)
-        if ri:
-            raise Exception('\nCheck Input Data ISLAND found with bus(es): '+str(ri))
-
-
-
-##        print(self.busC1)
-##        print(braC1)
-##        brIsland,busC_loop = __getLineISL__(self.busC2,self.busSlack)
-##        self.brAllSet = set(self.braC1.keys())
-##        self.brLoop = self.brAllSet - self.brIsland
-##        if ri:
-##            raise Exception('\nCheck Input Data ISLAND found with bus(es): '+str(ri))
-##
-##        print(self.busC_loop)
-##        #
-##        self.setLineHnd = self.setLineHndAll-lineOff
-##        #
-##        self.lineC = {k:self.LINE[k][:2] for k in self.setLineHnd}
-##        self.busC = {b1:set() for b1 in self.setBusHnd}
-##        for k,v in self.lineC.items():
-##            self.busC[v[0]].add(k)
-##            self.busC[v[1]].add(k)
-##        #
-##        r11 = self.setBusHnd.copy()
-##        self.busGroup = []# cac bus tuong ung o cac slack khac nhau
-##        for bs1 in self.busSlack:
-##            r1 = __findBusConnected__(bs1,self.busC,self.lineC)
-##            if len(r1.intersection(self.setSlack))>1:
-##                return 'LOOP MULTI SLACK'
-##            #
-##            self.busGroup.append(r1)
-##            r11.difference_update(r1)
-##        #
-##        if r11:
-##            return 'ISLAND'
-##        #
-##        # LOOP
-##        if __checkLoop__(self.bus0ISL,self.busC,self.lineC):
-##            return 'LOOP'
+            braCx.pop(br1)
         #
+        busCx = self.busC0.copy()
+        for br1 in brOff:
+            for b1 in self.braC1[br1]:
+                busCx[b1].remove(br1)
+        #
+        r1i = self.busAll0.copy()
+        for bs1 in self.busSlack:
+            r1a = findBusConnected(bs1,busCx,braCx)
+            if len(r1a.intersection(self.busSlack))>1:
+                if verbose:
+                    print('\nCheck Input Data LOOP (multi Slack) found with buses: ')
+                    for bii in r1a:
+                        print('\t',self.strBus(bii))
+                return 'LOOP'
+            r1i.difference_update(r1a)
+        if r1i:
+            if verbose:
+                print('\nCheck Input Data ISLAND found with bus(es): ')
+                for bii in r1i:
+                    print('\t',self.strBus(bii))
+            return 'ISLAND'
+
+        # CHECK LOOP: method1
+        brIsland,_ = getIsland(busCx,self.busSlack,flagSlack=False)
+        brt = self.brLoop - brIsland - brOff
+        if brt:
+            if verbose:
+                for b1 in brt:
+                    try:
+                        r1 = findBusConnected(b1,busCx,braCx)
+                        print('\nCheck Input Data LOOP found with buses: ')
+                        for bii in r1:
+                            print('\t',self.strBus(bii))
+                        break
+                    except:
+                        pass
+            return 'LOOP'
         return ''
     #
     def __checkData__(self):
         return
+    #
+    def strBranch(self,br1):
+        if type(br1)==int:
+            for i in range(len(self.aline['ID'])):
+                if br1==self.aline['ID'][i]:
+                    return str(br1)+" LINE: %s"%self.strBus(self.aline['BUS_ID1'][i])+' - '+self.strBus(self.aline['BUS_ID2'][i]) +" '%s'"%str(self.aline['CID'][i])
+            raise Exception('Branch not found: '+str(br1))
+        return [self.strBranch(bii) for bii in br1]
+    #
+    def strBus(self,b1):
+        if type(b1)==int:
+            for i in range(len(self.abus['ID'])):
+                if b1==self.abus['ID'][i]:
+                    return str(b1)+" '"+self.abus['NAME'][i]+"' "+str(self.abus['kV'][i])+' kV'
+            raise Exception('Bus not found: '+str(b1))
+        return [self.printBus(bi) for bi in b1]
 
 # data for Power Flow
 class DATAP_PF(DATAP):
     def __init__(self,fi):
         super().__init__(fi)
+        self._getProfile()
+        print(self.load)
+
+    #
+    def _getProfile(self):
+        # PROFILE
+        self.nameProfile = set(self.aprofile.keys())-{'time\\NO PROFILE'}
+        #
+        self.YesProfile = False
+        for i in range(len(self.abus['ID'])):
+            if self.abus['FLAG'][i]==1:
+                if str(self.abus['LoadProfile'][i]) in self.nameProfile:
+                    self.YesProfile = True
+        #
+        if not self.YesProfile:
+            for i in range(len(self.asource['ID'])):
+                if self.asource['FLAG'][i]==1:
+                    if str(self.asource['vGenProfile'][i]) in self.nameProfile or str(self.asource['pGenProfile'][i]) in self.nameProfile:
+                        self.YesProfile = True
+        #
+        self.load = []
+        lo1 = dict()
+        for i in range(len(self.abus['ID'])):
+            if self.abus['FLAG'][i]==1:
+                b1 = self.abus['ID'][i]
+                p1 = self.abus['PLOAD [kw]'][i]/self.sBase if self.abus['PLOAD [kw]'][i]!=None else 0
+                q1 = self.abus['QLOAD [kvar]'][i]/self.sBase if self.abus['QLOAD [kvar]'][i]!=None else 0
+                if abs(p1)>0 or abs(q1)>0:
+                    lo1[b1] = [p1,q1]
+        self.load.append(lo1)
+
+
+
+        if not self.YesProfile:
+            return
+
+
+
 
     #
     def run1Config(self,brOff=set(),shuntOff=set(),fo=''):
@@ -362,12 +422,14 @@ class DATAP_PF(DATAP):
             shuntOff = set(shuntOff)
         #
         brOff.intersection_update(self.brAllSet)
-
+        print('run1Config brOff:',brOff)
         #
         if self.setting['PF_Algo']=='PSM':
             return self.__run1ConfigPSM__(brOff,shuntOff,fo)
+
+
         return
-     #
+    #
     def __run1ConfigPSM__(self,brOff,shuntOff,fo=''):
         """
         - result (dict): {'FLAG':,'RateMax%', 'Umax[pu]','Umin[pu]','DeltaA','RateMax%'}
@@ -375,11 +437,34 @@ class DATAP_PF(DATAP):
         - DeltaA: MWH
         """
         #
-        t0 = time.time()
-        #
         c1 = self.checkLoopIsland(brOff)
         if c1:
             return {'FLAG':c1}
+        #
+        self.braC2 = self.braC1.copy()
+        for br1 in brOff:
+            self.braC2.pop(br1)
+        #
+        self.busC2 = self.busC1.copy()
+        for br1 in brOff:
+            for b1 in self.braC1[br1]:
+                self.busC2[b1].remove(br1)
+        #
+        self.brA2 = self.brAllSet-brOff
+        self.__lineDirection__()
+        self.__ordCompute__()
+        #print(self.ordv)
+
+        return
+
+    def __run1PSM1slk__(self):
+
+        return
+
+
+
+
+
 
         if 1:
             return
@@ -549,15 +634,16 @@ class DATAP_PF(DATAP):
     #
     def __ordCompute__(self):
         busC = dict() # connect [LineUp,[LineDown]]
-        for h1 in self.setBusHnd:
+        for h1 in self.brAllSet:
             busC[h1] = [0,set()]
         #
-        for h1,l1 in self.lineC.items():
+        for h1,l1 in self.braC2.items():
             busC[l1[1]][0]= h1     # frombus
             busC[l1[0]][1].add(h1) # tobus
         #
         self.ordc,self.ordv = [],[]
-        for bs1 in self.busGroup:
+        for b1 in self.busSlack:
+            bs1 = findBusConnected(b1,self.busC2,self.braC2)
             busC1 = {k:v for k,v in busC.items() if k in bs1}
             balr = {h1:True for h1 in bs1}
             sord = set()
@@ -573,7 +659,7 @@ class DATAP_PF(DATAP):
                 for k,v in busC1.items():
                     if balr[k]:
                         if len(v[1]-sord)==0:
-                            if k in self.setSlack:
+                            if k in self.busSlack:
                                 break
                             #
                             if v[0]!=0:
@@ -585,25 +671,26 @@ class DATAP_PF(DATAP):
             self.ordv.append(ordv1)
     #
     def __lineDirection__(self):
-        ba = self.busSlack[:]
+        ba = list(self.busSlack)
         lset = set()
         for ii in range(20000):
             ba2 = []
             for b1 in ba:
-                for l1 in self.setLineHnd:
+                for l1 in self.brA2:
                     if l1 not in lset:
-                        if b1==self.lineC[l1][1]:
-                            d = self.lineC[l1][0]
-                            self.lineC[l1][0] = self.lineC[l1][1]
-                            self.lineC[l1][1] = d
+                        if b1==self.braC2[l1][1]:
+                            d = self.braC2[l1][0]
+                            self.braC2[l1][0] = self.braC2[l1][1]
+                            self.braC2[l1][1] = d
                             lset.add(l1)
                             ba2.append(d)
-                        elif b1==self.lineC[l1][0]:
+                        elif b1==self.braC2[l1][0]:
                             lset.add(l1)
-                            ba2.append(self.lineC[l1][1])
+                            ba2.append(self.braC2[l1][1])
             if len(ba2)==0:
                 break
-            ba= ba2.copy()
+            ba=ba2.copy()
+
 # data for Recloser Optim
 class DATAP_REOP(DATAP):
     def __init__(self,fi):
@@ -692,13 +779,13 @@ def test_psm():
     # 1 source
     ARGVS.fi = 'inputs\\Inputs12.xlsx'
 ##    varFlag = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 13, 14, 15, 16,0,1]
-    brOff = [100,130,14,15] # {13,14,15}
+    brOff = [9,12,14] # {13,14,15}
     shuntOff = []
     #
 
     p1 = DATAP_PF(ARGVS.fi)
-##    v1 = p1.run1Config(brOff,fo=ARGVS.fo)
-##    print(v1)
+    v1 = p1.run1Config(brOff,fo=ARGVS.fo)
+    print(v1)
 ##    v1 = p1.run1Config_WithObjective(lineOff=lineOff,shuntOff=shuntOff,fo=ARGVS.fo)
 ##    print('time %.5f'%(time.time()-t01))
 ##    print(v1)
