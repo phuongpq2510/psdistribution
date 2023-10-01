@@ -2,8 +2,8 @@ __author__    = "Dr. Pham Quang Phuong"
 __copyright__ = "Copyright 2023"
 __license__   = "All rights reserved"
 __email__     = "phuong.phamquang@hust.edu.vn"
-__status__    = "Released"
-__version__   = "1.1.5"
+__status__    = "in Dev"
+__version__   = "2.0.1"
 """
 about: ....
 """
@@ -17,12 +17,6 @@ PARSER_INPUTS.usage = 'Distribution network analysis Tools'
 PARSER_INPUTS.add_argument('-fi' , help = '*(str) Input file path' , default = '',type=str,metavar='')
 PARSER_INPUTS.add_argument('-fo' , help = '*(str) Output file path', default = '',type=str,metavar='')
 ARGVS = PARSER_INPUTS.parse_known_args()[0]
-#
-RATEC = 100/math.sqrt(3)
-
-##def checkLoop(busHnd,bus,br)
-## print(busCx)
-##        print(braCx)
 
 #
 def checkLoop(busHnd,bus,br):
@@ -92,69 +86,24 @@ def getIsland(busC0,busSlack,flagSlack=False):
                 busc1[k]=v-lineISL
         busC = busc1.copy()
     return lineISL,busC
-#
-def readSetting(wbInput,sh1,nmax=500):
-    ws = wbInput[sh1]
-    res = {}
-    for i in range(1,nmax):# row
-        si = ws.cell(i,1).value
-        if type(si)==str and not si.startswith('##'):
-            for j in range(1,nmax):
-                sij = ws.cell(i,j).value
-                if type(sij)==str and len(sij)>2 and sij[2]=='_':
-                    res[sij] = utils.getVal(ws.cell(i+1,j).value)
-    return res
 
-# read 1 sheet excel
-def readInput1Sheet(wbInput,sh1,nmax=20000):
-    res = {}
-    setNo = set()
-    try:
-        ws = wbInput[sh1]
-    except:
-        return res
-    # dem so dong data
-    for i in range(2,nmax):
-        vi = ws.cell(i,1).value
-        if vi==None:
-            k=i
-            break
-        elif i>2:
-            if type(vi)!=int:
-                raise Exception ('\nID data must be Integer\n\tsheet: '+sh1+'\n\tline: '+str(i))
-            if vi in setNo:
-                raise Exception ('\nDuplicate ID data\n\tsheet: '+sh1+'\n\tline: '+str(i))
-            else:
-                setNo.add(vi)
-    #
-    for i in range(1,nmax):
-        v1 = ws.cell(2,i).value
-        if v1==None:
-            return res
-        va = []
-        #
-        for i1 in range(3,k):
-            va.append( utils.getVal(ws.cell(i1,i).value) )
-        res[str(v1)]=va
-    return res
 #
 class DATAP:
     def __init__(self,fi):
         wbInput = openpyxl.load_workbook(os.path.abspath(fi),data_only=True)
 
         #setting
-        self.setting = readSetting(wbInput,'SETTING')
-        self.sBase = self.setting['PF_Sbase[kva]']
-
+        self.setting = utils.readSetting(wbInput,'SETTING')
         # bus
-        self.abus = readInput1Sheet(wbInput,'BUS')
-        self.asource = readInput1Sheet(wbInput,'SOURCE')
-        self.ashunt = readInput1Sheet(wbInput,'SHUNT')
-        self.aline = readInput1Sheet(wbInput,'LINE')
-        self.atrf2 = readInput1Sheet(wbInput,'TRF2')
-        self.atrf3 = readInput1Sheet(wbInput,'TRF3')
-        self.aprofile = readInput1Sheet(wbInput,'PROFILE')
-        self.ashuntPla = readInput1Sheet(wbInput,'SHUNT_PLACEMENT')
+        self.abus = utils.readInput1Sheet(wbInput,'BUS')
+        self.asource = utils.readInput1Sheet(wbInput,'SOURCE')
+        self.ashunt = utils.readInput1Sheet(wbInput,'SHUNT')
+        self.aline = utils.readInput1Sheet(wbInput,'LINE')
+        self.atrf2 = utils.readInput1Sheet(wbInput,'TRF2')
+        self.atrf3 = utils.readInput1Sheet(wbInput,'TRF3')
+        self.aprofile = utils.readInput1Sheet(wbInput,'PROFILE')
+        self.ashuntPla = utils.readInput1Sheet(wbInput,'SHUNT_PLACEMENT')
+
         """
         self.busC1       connect of BUS                  {b1:{l1,l2,..}
         self.braC1       connect of BRANCH (LINE/X2,..)  {l1:[b1,b2] }
@@ -173,68 +122,42 @@ class DATAP:
         self.busAllLst     []
         self.busAllSet     set()
         self.busAll0       set()     ignore island bus/branch
-        self.busLoadSet    set()
         self.brAllSet      set()
         """
-        #
-        self.__checkData__()
-
         #-----------------------------------------------------------------------
-        self.busAllLst = []     # all bus
-        self.busLoadSet = set() # bus with load
-        for i in range(len(self.abus['ID'])):
-            if self.abus['FLAG'][i]==1:
-                self.busAllLst.append(self.abus['ID'][i])
-                if (self.abus['PLOAD [kw]'][i]!=None and abs(self.abus['PLOAD [kw]'][i])>0) or (self.abus['QLOAD [kvar]'][i]!=None and abs(self.abus['QLOAD [kvar]'][i])>0):
-                    self.busLoadSet.add(self.abus['ID'][i])
+        self.busAllLst = list(self.abus.keys())
         self.busAllSet = set(self.busAllLst)
 
         #
         self.busSlack = []
-        for i in range(len(self.asource['ID'])):
-            if self.asource['FLAG'][i]==1:#if gen is active
-                if 'PGen [kw]' not in self.asource.keys() or self.asource['PGen [kw]'][i]==None or self.asource['PGen [kw]'][i]==0:
-                    self.busSlack.append(self.asource['BUS_ID'][i])
+        for k,v in self.asource.items():
+            if v['CODE']==None or v['CODE']==0:
+                self.busSlack.append(v['BUS_ID'])
         print('busSlack:',self.busSlack)
+
         #-----------------------------------------------------------------------
         self.busC1 = {b1:set() for b1 in self.busAllLst}
         self.braC1 = {}
 
         # LINE
-        self.brLine = []
-        for i in range(len(self.aline['ID'])):
-            if self.aline['FLAG'][i]==1:#if line is active
-                l1 = self.aline['ID'][i]
-                b1 = self.aline['BUS_ID1'][i]
-                b2 = self.aline['BUS_ID2'][i]
-                self.busC1[b1].add(l1)
-                self.busC1[b2].add(l1)
-                self.braC1[l1] = [b1,b2]
-                self.brLine.append(l1)
+        for k,v in self.aline.items():
+            b1,b2 = v['BUS_ID1'],v['BUS_ID2']
+            self.busC1[b1].add(k)
+            self.busC1[b2].add(k)
+            self.braC1[k] = [b1,b2]
         # TRF2
-        self.brTrf2 = []
-        for i in range(len(self.atrf2['ID'])):
-            if self.atrf2['FLAG'][i]==1:#if trf2 is active
-                l1 = 100000+self.atrf2['ID'][i]
-                b1 = self.atrf2['BUS_ID1'][i]
-                b2 = self.atrf2['BUS_ID2'][i]
-                self.busC1[b1].add(l1)
-                self.busC1[b2].add(l1)
-                self.braC1[l1] = [b1,b2]
-                self.brTrf2.append(l1)
+        for k,v in self.atrf2.items():
+            b1,b2 = v['BUS_ID1'],v['BUS_ID2']
+            self.busC1[b1].add(k)
+            self.busC1[b2].add(k)
+            self.braC1[k] = [b1,b2]
         # TRF3
-        self.brTrf3 = []
-        for i in range(len(self.atrf3['ID'])):
-            if self.atrf3['FLAG'][i]==1:#if trf3 is active
-                l1 = 200000+self.atrf3['ID'][i]
-                b1 = self.atrf3['BUS_ID1'][i]
-                b2 = self.atrf3['BUS_ID2'][i]
-                b3 = self.atrf3['BUS_ID3'][i]
-                self.busC1[b1].add(l1)
-                self.busC1[b2].add(l1)
-                self.busC1[b3].add(l1)
-                self.braC1[l1] = [b1,b2,b3]
-                self.brTrf3.append(l1)
+        for k,v in self.atrf3.items():
+            b1,b2,b3 = v['BUS_ID1'],v['BUS_ID2'],v['BUS_ID3']
+            self.busC1[b1].add(k)
+            self.busC1[b2].add(k)
+            self.busC1[b3].add(k)
+            self.braC1[k] = [b1,b2,b3]
         #
         self.brAllSet = set(self.braC1.keys())
         #
@@ -248,7 +171,7 @@ class DATAP:
         self.brIsland,_ = getIsland(self.busC1,self.busSlack,flagSlack=len(self.busSlack)==1)
         self.brLoop = self.brAllSet - self.brIsland
         #
-        print('brIsland: ',self.brIsland)
+        print('brIsland:',self.brIsland)
         print('brLoop:',self.brLoop)
         #
         r1 = findBusConnected(self.busSlack,self.busC1,self.braC1)
@@ -351,36 +274,45 @@ class DATAP:
             return 'LOOP'
         return ''
     #
-    def __checkData__(self):
-        return
-    #
     def strBranch(self,br1):
         if type(br1)==int:
-            for i in range(len(self.aline['ID'])):
-                if br1==self.aline['ID'][i]:
-                    return str(br1)+" LINE: %s"%self.strBus(self.aline['BUS_ID1'][i])+' - '+self.strBus(self.aline['BUS_ID2'][i]) +" '%s'"%str(self.aline['CID'][i])
-            raise Exception('Branch not found: '+str(br1))
+            try:
+                return str(br1)+" LINE: %s"%self.strBus(self.aline[br1]['BUS_ID1'])+' - '+self.strBus(self.aline[br1]['BUS_ID2']) +" '%s'"%str(self.aline[br1]['CID'])
+            except:
+                raise Exception('Branch not found: '+str(br1))
         return [self.strBranch(bii) for bii in br1]
     #
     def strBus(self,b1):
         if type(b1)==int:
-            for i in range(len(self.abus['ID'])):
-                if b1==self.abus['ID'][i]:
-                    return str(b1)+" '"+self.abus['NAME'][i]+"' "+str(self.abus['kV'][i])+' kV'
-            raise Exception('Bus not found: '+str(b1))
-        return [self.printBus(bi) for bi in b1]
+            try:
+                return str(b1)+" '"+self.abus[b1]['NAME']+"' "+str(self.abus[b1]['kV'])+' kV'
+            except:
+                raise Exception('Bus not found: '+str(b1))
+        return [self.strBus(bi) for bi in b1]
 
 # data for Power Flow
 class DATAP_PF(DATAP):
     def __init__(self,fi):
         super().__init__(fi)
-        self._getProfile()
-        print(self.load)
-
+##        self._getProfile()
+##        print(self.agen[0])
+##        print(self.agen[2])
+        # get RX
+##        self._getRXB()
+##        print(self.braRX)
+    #
+    def _getRXB(self):
+        self.braRX = dict()
+        for i in range(len(self.aline['ID'])):
+            if self.aline['FLAG'][i]==1:
+                l1 = self.aline['ID'][i]
+                len1 = self.aline['LENGTH [km]'][i]
+                r1 = self.aline['R [Ohm/km]'][i]
+                x1 = self.aline['R [Ohm/km]'][i]
     #
     def _getProfile(self):
         # PROFILE
-        self.nameProfile = set(self.aprofile.keys())-{'time\\NO PROFILE'}
+        self.nameProfile = list(self.aprofile.keys()-{'time\\NO PROFILE'})
         #
         self.YesProfile = False
         for i in range(len(self.abus['ID'])):
@@ -394,7 +326,7 @@ class DATAP_PF(DATAP):
                     if str(self.asource['vGenProfile'][i]) in self.nameProfile or str(self.asource['pGenProfile'][i]) in self.nameProfile:
                         self.YesProfile = True
         #
-        self.load = []
+        self.load,self.vgen,self.agen,self.pgen = [],[],[],[]
         lo1 = dict()
         for i in range(len(self.abus['ID'])):
             if self.abus['FLAG'][i]==1:
@@ -404,14 +336,71 @@ class DATAP_PF(DATAP):
                 if abs(p1)>0 or abs(q1)>0:
                     lo1[b1] = [p1,q1]
         self.load.append(lo1)
-
-
-
+        #
+        va1,pa1,aa1 = dict(),dict(),dict()
+        for i in range(len(self.asource['ID'])):
+            if self.asource['FLAG'][i]==1:#if gen is active
+                b1 = self.asource['BUS_ID'][i]
+                v1 = self.asource['vGen [pu]'][i]
+                va1[b1] = v1
+                if self.asource['CODE'][i]==1:
+                    p1 = self.asource['PGen [kw]'][i]/self.sBase if  self.asource['PGen [kw]'][i]!=None else 0
+                    pa1[b1] = p1
+                else:
+                    aa1[b1] = self.asource['aGen [deg]'][i] *math.pi/180 if self.asource['aGen [deg]'][i]!=None else 0
+        self.vgen.append(va1)
+        self.pgen.append(pa1)
+        self.agen.append(aa1)
         if not self.YesProfile:
             return
-
-
-
+        #
+        for ii in range(len(self.aprofile['time\\NO PROFILE'])):
+            lo2 = dict()
+            for i in range(len(self.abus['ID'])):
+                if self.abus['FLAG'][i]==1:
+                    b1 = self.abus['ID'][i]
+                    pf1 = str(self.abus['LoadProfile'][i])
+                    if pf1 in self.nameProfile:
+                        if b1 in lo1.keys():
+                            lo2[b1]=[lo1[b1][0]*self.aprofile[pf1][ii],lo1[b1][1]*self.aprofile[pf1][ii]]
+                    else:
+                        if b1 in lo1.keys():
+                            lo2[b1] = lo1[b1].copy()
+            self.load.append(lo2)
+            #
+            va2 = dict()
+            for i in range(len(self.asource['ID'])):
+                if self.asource['FLAG'][i]==1:
+                    b1 = self.asource['BUS_ID'][i]
+                    pf1 = str(self.asource['vGenProfile'][i])
+                    if pf1 in self.nameProfile:
+                        if b1 in va1.keys():
+                            va2[b1]=va1[b1]*self.aprofile[pf1][ii]
+                    else:
+                        if b1 in va1.keys():
+                            va2[b1] = va1[b1]
+            self.vgen.append(va2)
+            #
+            pa2 = dict()
+            for i in range(len(self.asource['ID'])):
+                if self.asource['FLAG'][i]==1:
+                    b1 = self.asource['BUS_ID'][i]
+                    pf1 = str(self.asource['pGenProfile'][i])
+                    if pf1 in self.nameProfile:
+                        if b1 in pa1.keys():
+                            pa2[b1]=pa1[b1]*self.aprofile[pf1][ii]
+                    else:
+                        if b1 in pa1.keys():
+                            pa2[b1] = pa1[b1]
+            self.pgen.append(pa2)
+            #
+            aa2 = dict()
+            for i in range(len(self.asource['ID'])):
+                if self.asource['FLAG'][i]==1:
+                    b1 = self.asource['BUS_ID'][i]
+                    if b1 in aa1.keys():
+                        aa2[b1] = aa1[b1]
+            self.agen.append(aa2)
 
     #
     def run1Config(self,brOff=set(),shuntOff=set(),fo=''):
@@ -779,13 +768,13 @@ def test_psm():
     # 1 source
     ARGVS.fi = 'inputs\\Inputs12.xlsx'
 ##    varFlag = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 13, 14, 15, 16,0,1]
-    brOff = [9,12,14] # {13,14,15}
+    brOff = [9,12]
     shuntOff = []
     #
 
     p1 = DATAP_PF(ARGVS.fi)
     v1 = p1.run1Config(brOff,fo=ARGVS.fo)
-    print(v1)
+##    print(v1)
 ##    v1 = p1.run1Config_WithObjective(lineOff=lineOff,shuntOff=shuntOff,fo=ARGVS.fo)
 ##    print('time %.5f'%(time.time()-t01))
 ##    print(v1)

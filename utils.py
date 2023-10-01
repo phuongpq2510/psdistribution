@@ -1,12 +1,72 @@
 __author__    = "Dr. Pham Quang Phuong"
-__copyright__ = "Copyright 2022"
+__copyright__ = "Copyright 2023"
 __license__   = "All rights reserved"
 __email__     = "phuong.phamquang@hust.edu.vn"
-__status__    = "Released"
-__version__   = "1.0.0.1"
+__status__    = "in Dev"
+__version__   = "2.0.0"
 import os
 import tempfile,random,string
 
+#
+def todict(av):
+    res = dict()
+    ka = av.keys()
+    for i in range(len(av['ID'])):
+        k1 = av['ID'][i]
+        try:
+            flag = av['FLAG'][i]
+        except:
+            flag = 1
+        if flag==1:
+            v1 = dict()
+            for k2 in av.keys():
+                if k2 not in {'ID','FLAG'}:
+                    v1[k2] = av[k2][i]
+            res[k1] = v1
+    return res
+#
+def readSetting(wbInput,sh1,nmax=500):
+    ws = wbInput[sh1]
+    res = {}
+    for i in range(1,nmax):# row
+        si = ws.cell(i,1).value
+        if type(si)==str and not si.startswith('##'):
+            if type(si)==str and len(si)>2 and si[2]=='_':
+                res[si] = getVal(ws.cell(i,2).value)
+    return res
+
+# read 1 sheet excel
+def readInput1Sheet(wbInput,sh1,nmax=20000):
+    res = {}
+    setNo = set()
+    try:
+        ws = wbInput[sh1]
+    except:
+        return res
+    # dem so dong data
+    for i in range(2,nmax):
+        vi = ws.cell(i,1).value
+        if vi==None:
+            k=i
+            break
+        elif i>2:
+            if type(vi)!=int:
+                raise Exception ('\nID data must be Integer\n\tsheet: '+sh1+'\n\tline: '+str(i))
+            if vi in setNo:
+                raise Exception ('\nDuplicate ID data\n\tsheet: '+sh1+'\n\tline: '+str(i))
+            else:
+                setNo.add(vi)
+    #
+    for i in range(1,nmax):
+        v1 = ws.cell(2,i).value
+        if v1==None:
+            return todict(res)
+        va = []
+        #
+        for i1 in range(3,k):
+            va.append( getVal(ws.cell(i1,i).value) )
+        res[str(v1)]=va
+    return todict(res)
 #
 def add2CSV(nameFile,ares,delim):
     """
@@ -156,8 +216,9 @@ def get_file_out(fo,fi,subf,ad,ext):
         deleteFile(fo)
         if not os.path.isfile(fo):
             return os.path.abspath(fo)
-
-
+#
+def isVal(v1):
+    return v1!=None and abs(v1)>0
 #
 def getVal(s0):
     if s0==None or type(s0)==int or type(s0)==float:
