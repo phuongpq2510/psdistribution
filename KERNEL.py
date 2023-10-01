@@ -3,7 +3,7 @@ __copyright__ = "Copyright 2023"
 __license__   = "All rights reserved"
 __email__     = "phuong.phamquang@hust.edu.vn"
 __status__    = "in Dev"
-__version__   = "2.0.2"
+__version__   = "2.0.3"
 """
 about: ....
 """
@@ -123,7 +123,17 @@ class DATAP:
         self.busAllSet     set()
         self.busAll0       set()     ignore island bus/branch
         self.brAllSet      set()
+        self.shuntAllSet   set()
         """
+        if self.setting['GE_PowerUnit'][0] not in {'kw','mw'}:
+            raise Exception('Error PowerUnit not in kw,mw')
+        self.sbase0 = self.setting['GE_Sbase'][0]
+        if self.setting['GE_PowerUnit'][0]=='kw':
+            self.sbase = self.sbase0*1e3
+        else:
+            self.sbase = self.sbase0*1e6
+        self.algoPF = self.setting['PF_Algo'][0]
+        self.zzero = float(self.setting['GE_ZSwitch'][0])
         #-----------------------------------------------------------------------
         self.busAllLst = list(self.abus.keys())
         self.busAllSet = set(self.busAllLst)
@@ -160,6 +170,7 @@ class DATAP:
             self.braC1[k] = [b1,b2,b3]
         #
         self.brAllSet = set(self.braC1.keys())
+        self.shuntAllSet = set(self.ashunt.keys())
         #
         bra,self.busC0 = getIsland(self.busC1,self.busSlack,flagSlack=False)
         self.braC0 = self.braC1.copy()
@@ -294,114 +305,114 @@ class DATAP:
 class DATAP_PF(DATAP):
     def __init__(self,fi):
         super().__init__(fi,0)
-##        self._getProfile()
-##        print(self.agen[0])
-##        print(self.agen[2])
+        self._getProfile()
         # get RX
-##        self._getRXB()
-##        print(self.braRX)
+        self._getRXB()
     #
     def _getRXB(self):
         self.braRX = dict()
-        for i in range(len(self.aline['ID'])):
-            if self.aline['FLAG'][i]==1:
-                l1 = self.aline['ID'][i]
-                len1 = self.aline['LENGTH [km]'][i]
-                r1 = self.aline['R [Ohm/km]'][i]
-                x1 = self.aline['R [Ohm/km]'][i]
+        self.braB = dict() # for Branch
+        self.shuntB = dict() # for Shunt
+        #
+        for k,v in self.aline.items():
+            kv = v['kV']
+            zbase = kv*kv*10e6/self.sbase
+            l1 = v['LENGTH [km]']
+            #
+            r1 = v['R [Ohm/km]']*l1/zbase
+            x1 = v['X [Ohm/km]']*l1/zbase
+            if abs(r1)<self.zzero and abs(x1)<self.zzero :
+                x1 = self.zzero
+                r1 = 0
+            self.braRX[k] = complex(r1,x1)
+            #
+            b1_2 = v['B [microS/km]']*l1/2*1e-6*zbase if v['B [microS/km]']!=None else 0
+            if abs(b1_2)>1e-9:
+                self.braB[k] = [b1_2,b1_2]
+        # for TRF2
+        # for TRF3
+        #
+        for k,v in self.ashunt.items():
+            b1 = v['BUS_ID']
+            q1 = v['Qshunt']/self.sbase0
+            p1 = v['deltaP']/self.sbase0
+            self.shuntB[k] = [b1,p1,q1]
+        #print('braRX',self.braRX)
+        #print('braB',self.braB)
+        #print('shuntB',self.shuntB)
     #
     def _getProfile(self):
         # PROFILE
-        self.nameProfile = list(self.aprofile.keys()-{'time\\NO PROFILE'})
+        nameProfile = []
+        YesProfile = False
+        for k,v in self.aprofile.items():
+            for v1 in v.keys():
+                if v1 not in {'deltaTime', 'MEMO'}:
+                    nameProfile.append(v1)
+            break
         #
-        self.YesProfile = False
-        for i in range(len(self.abus['ID'])):
-            if self.abus['FLAG'][i]==1:
-                if str(self.abus['LoadProfile'][i]) in self.nameProfile:
-                    self.YesProfile = True
-        #
-        if not self.YesProfile:
-            for i in range(len(self.asource['ID'])):
-                if self.asource['FLAG'][i]==1:
-                    if str(self.asource['vGenProfile'][i]) in self.nameProfile or str(self.asource['pGenProfile'][i]) in self.nameProfile:
-                        self.YesProfile = True
-        #
-        self.load,self.vgen,self.agen,self.pgen = [],[],[],[]
-        lo1 = dict()
-        for i in range(len(self.abus['ID'])):
-            if self.abus['FLAG'][i]==1:
-                b1 = self.abus['ID'][i]
-                p1 = self.abus['PLOAD [kw]'][i]/self.sBase if self.abus['PLOAD [kw]'][i]!=None else 0
-                q1 = self.abus['QLOAD [kvar]'][i]/self.sBase if self.abus['QLOAD [kvar]'][i]!=None else 0
-                if abs(p1)>0 or abs(q1)>0:
-                    lo1[b1] = [p1,q1]
-        self.load.append(lo1)
-        #
-        va1,pa1,aa1 = dict(),dict(),dict()
-        for i in range(len(self.asource['ID'])):
-            if self.asource['FLAG'][i]==1:#if gen is active
-                b1 = self.asource['BUS_ID'][i]
-                v1 = self.asource['vGen [pu]'][i]
-                va1[b1] = v1
-                if self.asource['CODE'][i]==1:
-                    p1 = self.asource['PGen [kw]'][i]/self.sBase if  self.asource['PGen [kw]'][i]!=None else 0
-                    pa1[b1] = p1
-                else:
-                    aa1[b1] = self.asource['aGen [deg]'][i] *math.pi/180 if self.asource['aGen [deg]'][i]!=None else 0
-        self.vgen.append(va1)
-        self.pgen.append(pa1)
-        self.agen.append(aa1)
-        if not self.YesProfile:
-            return
-        #
-        for ii in range(len(self.aprofile['time\\NO PROFILE'])):
-            lo2 = dict()
-            for i in range(len(self.abus['ID'])):
-                if self.abus['FLAG'][i]==1:
-                    b1 = self.abus['ID'][i]
-                    pf1 = str(self.abus['LoadProfile'][i])
-                    if pf1 in self.nameProfile:
-                        if b1 in lo1.keys():
-                            lo2[b1]=[lo1[b1][0]*self.aprofile[pf1][ii],lo1[b1][1]*self.aprofile[pf1][ii]]
-                    else:
-                        if b1 in lo1.keys():
-                            lo2[b1] = lo1[b1].copy()
-            self.load.append(lo2)
+        if len(nameProfile)>0:
+            for k,v in self.abus.items():
+                if str(v['Load Profile']) in nameProfile:
+                    YesProfile = True
+                    break
             #
-            va2 = dict()
-            for i in range(len(self.asource['ID'])):
-                if self.asource['FLAG'][i]==1:
-                    b1 = self.asource['BUS_ID'][i]
-                    pf1 = str(self.asource['vGenProfile'][i])
-                    if pf1 in self.nameProfile:
-                        if b1 in va1.keys():
-                            va2[b1]=va1[b1]*self.aprofile[pf1][ii]
-                    else:
-                        if b1 in va1.keys():
-                            va2[b1] = va1[b1]
-            self.vgen.append(va2)
-            #
-            pa2 = dict()
-            for i in range(len(self.asource['ID'])):
-                if self.asource['FLAG'][i]==1:
-                    b1 = self.asource['BUS_ID'][i]
-                    pf1 = str(self.asource['pGenProfile'][i])
-                    if pf1 in self.nameProfile:
-                        if b1 in pa1.keys():
-                            pa2[b1]=pa1[b1]*self.aprofile[pf1][ii]
-                    else:
-                        if b1 in pa1.keys():
-                            pa2[b1] = pa1[b1]
-            self.pgen.append(pa2)
-            #
-            aa2 = dict()
-            for i in range(len(self.asource['ID'])):
-                if self.asource['FLAG'][i]==1:
-                    b1 = self.asource['BUS_ID'][i]
-                    if b1 in aa1.keys():
-                        aa2[b1] = aa1[b1]
-            self.agen.append(aa2)
-
+            for k,v in self.asource.items():
+                if str(v['vGen Profile']) in nameProfile or str(v['pGen Profile']) in nameProfile:
+                    YesProfile = True
+                    break
+        if YesProfile:
+            self.IDProfile = list(self.aprofile.keys())
+            for k01 in [0,'0','00','01','0001','0002','0003']:
+                if k01 not in self.aprofile.keys():
+                    self.IDProfile.insert(0,k01)
+                    break
+        else:
+            self.IDProfile = [0]
+        print('Profile: ',YesProfile,nameProfile,self.IDProfile)
+        #
+        self.load = {k:dict() for k in self.IDProfile}
+        self.vgen = {k:dict() for k in self.IDProfile}
+        self.pgen = {k:dict() for k in self.IDProfile}
+        #
+        for k,v in self.abus.items():
+            p1 = self.abus[k]['PLOAD']/self.setting['GE_Sbase'][0] if self.abus[k]['PLOAD']!=None else 0
+            q1 = self.abus[k]['QLOAD']/self.setting['GE_Sbase'][0] if self.abus[k]['QLOAD']!=None else 0
+            if p1!=0.0 and q1!=0.0:
+                pf1 = self.abus[k]['Load Profile']
+                if pf1 in {'deltaTime', 'MEMO'}:
+                    raise Exception('\nError Load Profile at BUS: '+self.strBus(k)+ '\n\tLoad Profile: '+pf1)
+                for pfr1 in self.IDProfile:
+                    try:
+                        kp = self.aprofile[pfr1][pf1]
+                    except:
+                        kp =1
+                    self.load[pfr1][k] = complex(p1*kp,q1*kp)
+        #print(self.load)
+        for k,v in self.asource.items():
+            k1 = self.asource[k]['BUS_ID']
+            v1 = self.asource[k]['vGen [pu]']
+            p1 = self.asource[k]['Pgen']/self.sbase0 if self.asource[k]['Pgen']!=None else 0
+            pf1 = self.asource[k]['vGen Profile']
+            if pf1 in {'deltaTime', 'MEMO'}:
+                raise Exception('\nError vGen Profile at BUS: '+self.strBus(k1)+ '\n\tvGen Profile: '+pf1)
+            pf2 = self.asource[k]['pGen Profile']
+            if pf2 in {'deltaTime', 'MEMO'}:
+                raise Exception('\nError pGen Profile at BUS: '+self.strBus(k1)+ '\n\tpGen Profile: '+pf2)
+            for pfr1 in self.IDProfile:
+                try:
+                    kv = self.aprofile[pfr1][pf1]
+                except:
+                    kv = 1
+                #
+                try:
+                    kp = self.aprofile[pfr1][pf2]
+                except:
+                    kp = 1
+                self.vgen[pfr1][k1] = v1*kv
+                self.pgen[pfr1][k1] = p1*kp
+        #print(self.vgen)
+        #print(self.pgen)
     #
     def run1Config(self,brOff=set(),shuntOff=set(),fo=''):
         """ run PF 1 config """
@@ -411,13 +422,18 @@ class DATAP_PF(DATAP):
             shuntOff = set(shuntOff)
         #
         brOff.intersection_update(self.brAllSet)
-        print('run1Config brOff:',brOff)
+        shuntOff.intersection_update(self.shuntAllSet)
+        print('run1Config\n\tbrOff:',list(brOff),'\n\tshuntOff:',list(shuntOff))
         #
-        if self.setting['PF_Algo']=='PSM':
+        if self.algoPF=='PSM':
             return self.__run1ConfigPSM__(brOff,shuntOff,fo)
-
-
-        return
+        #
+        if self.algoPF=='GS':
+            return self.__run1ConfigGS__(brOff,shuntOff,fo)
+        #
+        if self.algoPF=='NR':
+            return self.__run1ConfigNR__(brOff,shuntOff,fo)
+        raise Exception('Error Algo Powerflow PSM,GS,NR')
     #
     def __run1ConfigPSM__(self,brOff,shuntOff,fo=''):
         """
@@ -426,9 +442,14 @@ class DATAP_PF(DATAP):
         - DeltaA: MWH
         """
         #
+        t0 = time.time()
         c1 = self.checkLoopIsland(brOff)
         if c1:
             return {'FLAG':c1}
+        #
+        iterMax = self.setting['PF_option_PSM'][0]
+        epsilon = self.setting['PF_option_PSM'][1]
+
         #
         self.braC2 = self.braC1.copy()
         for br1 in brOff:
@@ -441,185 +462,96 @@ class DATAP_PF(DATAP):
         #
         self.brA2 = self.brAllSet-brOff
         self.__lineDirection__()
-        self.__ordCompute__()
-        #print(self.ordv)
-
-        return
-
-    def __run1PSM1slk__(self):
-
-        return
-
-
-
-
-
-
-        if 1:
-            return
-        # ok run PSM
-        self.__lineDirection__()
-        #print(self.lineC)
-        self.__ordCompute__()
-        #print(self.ordc)
+        ordc,ordv,groupA = self.__ordCompute__()
+        #B of Line
+        BUSb = {} # for b, p of line,shunt
+        for k,v in self.braB.items():
+            if k not in brOff:
+                for i in range(len(v)):
+                    bi = self.braC1[k][i]
+                    vi = self.braB[k][i]
+                    if vi!=0.0:
+                        try:
+                            BUSb[bi]-=complex(0,vi)
+                        except:
+                            BUSb[bi]=complex(0,-vi)
         #
-        res = {'FLAG':'CONVERGENCE','RateMax[%]':0, 'Umax[pu]':0,'Umin[pu]':100,'DeltaA':0,'cosP':0,'cosN':0}
-        # B of Line
-        BUSb = {}
-        for bri,v in self.LINEb.items():
-            if bri not in lineOff:
-                bfrom = self.lineC[bri][0]
-                bto = self.lineC[bri][1]
-                #
-                if bfrom in BUSb.keys():
-                    BUSb[bfrom]+=v
-                else:
-                    BUSb[bfrom]=v
-                #
-                if bto in BUSb.keys():
-                    BUSb[bto]+=v
-                else:
-                    BUSb[bto]=v
-
-        # Shunt
-        for k1,v1 in self.BUSbs.items():
-            if k1 not in shuntOff:
-                if k1 in BUSb.keys():
-                    BUSb[k1]+=v1
-                else:
-                    BUSb[k1]=v1
+        #print('BUSb',BUSb)
+        for k,v in self.shuntB.items():
+            if k not in shuntOff:
+                bi = v[0]
+                if v[1]!=0.0:
+                    try:
+                        BUSb[bi]+= v[1]
+                    except:
+                        BUSb[bi]= complex(v[1],0)
+                if v[2]!=0.0:
+                    try:
+                        BUSb[bi]+=complex(0,-v[2])
+                    except:
+                        BUSb[bi]=complex(0,-v[2])
+        print('BUSb',BUSb)
         #
-        if fo:
-            add2CSV(fo,[[],[time.ctime()],['PF 1Profile','lineOff',str(list(lineOff)),'shuntOff',str(list(shuntOff))]],',')
-            #
-            rB = [[],['BUS/Profile']]
-            rB[1].extend([bi for bi in self.lstBusHnd])
-            #
-            rL = [[],['LINE/Profile']]
-            rL[1].extend([bi for bi in self.lstLineHnd])
-            #
-            rG = [[],['GEN/Profile']]
-            for bi in self.busSlack:
-                 rG[1].append(str(bi)+'_P')
-                 rG[1].append(str(bi)+'_Q')
-                 rG[1].append(str(bi)+'_cosPhi')
-            print('File out saved as:',fo)
-        #
-        va,ra,cosP,cosN = [],[],[1],[-1]
-        for pi in self.profileID:
-            res['DeltaA']-=self.loadAll[pi].real
-            sa1,va1,dia1 = dict(),dict(),dict()# for 1 profile
-            for i1 in range(self.nSlack):# with each slack bus
-                bs1 = self.busSlack[i1]
-                ordc1 = self.ordc[i1]
-                ordv1 = self.ordv[i1]
-                setBusHnd1 = self.busGroup[i1]
-                vbus = {h1:complex(self.Ubase,0) for h1 in setBusHnd1}
-                vbus[bs1] = complex(self.genProfile[pi][bs1],0)
+        for ii1 in range(len(self.IDProfile)):
+            load1p = self.load[ii1]
+            vgen1p = self.vgen[ii1]
+            print('vgen1:',vgen1p)
+            for ii2 in range(len(self.busSlack)):
+                ordc1 = ordc[ii2]
+                ordv1 = ordv[ii2]
+                busGrp1 = groupA[ii2]
+                sbus1 = {k:complex() for k in busGrp1}
+                for k,v in load1p.items():
+                    if k in busGrp1:
+                        sbus1[k] = v
+                BUSb1 = {k:v for k,v in BUSb.items() if k in busGrp1}
                 #
-                du,di = dict(),dict()
-                s0 = 0
-                for ii in range(self.iterMax+1):
-                    sbus = {k:v for k,v in self.loadProfile[pi].items() if k in setBusHnd1}
-                    # B of Line + Shunt
-                    for k1,v1 in BUSb.items():
-                        if k1 in setBusHnd1:
-                            vv = abs(vbus[k1])
-                            sbus[k1] += complex(0, -vv*vv*v1)
+                print('ordc1',ordc1)
+                print('ordv1',ordv1)
+                print('busGrp1',busGrp1)
+                print('sbus1:',sbus1)
+                #
+                bs1 = self.busSlack[ii2] # bus Slack
+                vg1 = vgen1p[bs1]
+                du,di,s0 = dict(),dict(),0
+                vbus = {h1:complex(vg1,0) for h1 in busGrp1}
+                #
+                for ii in range(iterMax+1):
+                    sbus = sbus1.copy()
+                    for k,v in BUSb1.items():
+                        vm = abs(vbus[k])
+                        sbus[k] += vm*vm*v
                     # cal cong suat nguoc
                     for bri in ordc1:
-                        bfrom = self.lineC[bri][0]
-                        bto = self.lineC[bri][1]
-                        rx = self.LINE[bri][2]
+                        b1 = self.braC2[bri][0]
+                        b2 = self.braC2[bri][1]
+                        rx = self.braRX[bri]
+                        ib = sbus[b2]/vbus[b2]
+                        iba = abs(ib)
+                        du[bri] = ib.conjugate()*rx
+                        di[bri] = iba
+                        ds1 = iba*iba*rx
                         #
-                        du[bri] = sbus[bto].conjugate()/vbus[bto].conjugate()*rx
-                        ib = abs(sbus[bto]/vbus[bto])
-                        di[bri] = ib
-                        ds1 = ib*ib*rx
-                        #
-                        if ds1.real>0.2 and ds1.real>sbus[bto].real:# neu ton that lon hon cong suat cua tai
-                            return {'FLAG':'DIVERGENCE'}
-                        #
-                        sbus[bfrom]+=ds1+sbus[bto]
+                        sbus[b1]+=ds1+sbus[b2]
+                    #
                     # cal dien ap xuoi
                     for bri in ordv1:
-                        bfrom = self.lineC[bri][0]
-                        bto = self.lineC[bri][1]
-                        vbus[bto]=vbus[bfrom]-du[bri]
+                        b1 = self.braC2[bri][0]
+                        b2 = self.braC2[bri][1]
+                        vbus[b2]=vbus[b1]-du[bri]
                     #
-                    if abs(s0-sbus[bs1])<self.epsilon:
+                    ep1 = abs(s0-sbus[bs1])
+                    print(sbus[bs1],ep1,ii)
+                    if ep1<epsilon:
                         break
                     else:
                         s0 = sbus[bs1]
                     #
-                    if ii==self.iterMax:
+                    if ii==iterMax:
                         return {'FLAG':'DIVERGENCE'}
-                # finish
-                # loss P
-                res['DeltaA']+=sbus[bs1].real
-                # Umax[pu]/Umin[pu]
-                va.extend( [abs(v) for v in vbus.values()] )
-                #
-                try:
-                    if sbus[bs1].imag>=0:
-                        cosP.append(sbus[bs1].real/abs(sbus[bs1]))
-                    else:
-                        cosN.append(-sbus[bs1].real/abs(sbus[bs1]))
-                except:
-                    pass
-                # RateMax
-                for bri in ordc1:
-                    ra.append( di[bri]/self.LINE[bri][3]*RATEC )
-                #
-                if fo:
-                    va1.update(vbus)
-                    dia1.update(di)
-                    sa1.update(sbus)
-            #
-            if fo:
-                rb1 = [pi]
-                rl1 = [pi]
-                rg1 = [pi]
-                for bi1 in self.lstBusHnd:
-                    rb1.append(toString(abs(va1[bi1])/self.Ubase))
-                #
-                for bri in self.lstLineHnd:
-                    try:
-                        r1 = dia1[bri]/self.LINE[bri][3]*RATEC
-                        rl1.append( toString(r1,2) )
-                    except:
-                        rl1.append('0')
-                #
-                for bs1 in self.busSlack:
-                    rg1.append(toString(sa1[bs1].real))
-                    rg1.append(toString(sa1[bs1].imag))
-                    if sa1[bs1].imag>=0:
-                        rg1.append(toString(sa1[bs1].real/abs(sa1[bs1]),3))
-                    else:
-                        rg1.append(toString(-sa1[bs1].real/abs(sa1[bs1]),3))
-                #
-                rB.append(rb1)
-                rL.append(rl1)
-                rG.append(rg1)
-        #
-        va.sort()
-        res['Umax[pu]'] = va[-1]/self.Ubase
-        res['Umin[pu]'] = va[0]/self.Ubase
-        res['RateMax[%]'] = max(ra)
-        res['cosP'] = min(cosP)
-        res['cosN'] = max(cosN)
-        #
-        if fo:
-            rB.append(['','Umax[pu]',toString(res['Umax[pu]']),'Umin[pu]',toString(res['Umin[pu]']) ])
-            add2CSV(fo,rB,',')
-            #
-            rL.append(['','RateMax[%]',toString(res['RateMax[%]'],2)])
-            add2CSV(fo,rL,',')
-            #
-            rG.append(['','cosPmin',toString(res['cosP'],3),'cosNMax',toString(res['cosN'],3)])
-            add2CSV(fo,rG,',')
-        #
-        return res
+
+        print('run1ConfigPSM: %.6f[s]'%(time.time()-t0))
+        return
     #
     def __ordCompute__(self):
         busC = dict() # connect [LineUp,[LineDown]]
@@ -630,7 +562,7 @@ class DATAP_PF(DATAP):
             busC[l1[1]][0]= h1     # frombus
             busC[l1[0]][1].add(h1) # tobus
         #
-        self.ordc,self.ordv = [],[]
+        ordc,ordv,busGroup = [],[],[]
         for b1 in self.busSlack:
             bs1 = findBusConnected(b1,self.busC2,self.braC2)
             busC1 = {k:v for k,v in busC.items() if k in bs1}
@@ -656,8 +588,10 @@ class DATAP_PF(DATAP):
                             sord.add(v[0])
                             balr[k]=False
             ordv1 = [ordc1[-i-1]  for i in range(len(ordc1))]
-            self.ordc.append(ordc1)
-            self.ordv.append(ordv1)
+            ordc.append(ordc1)
+            ordv.append(ordv1)
+            busGroup.append(bs1)
+        return ordc,ordv,busGroup
     #
     def __lineDirection__(self):
         ba = list(self.busSlack)
@@ -686,16 +620,6 @@ class DATAP_REOP(DATAP):
         super().__init__(fi,0)
     #
     def getData(self):
-        # bus
-##        self.abus = readInput1Sheet(wbInput,'BUS')
-##        self.asource = readInput1Sheet(wbInput,'SOURCE')
-##        self.ashunt = readInput1Sheet(wbInput,'SHUNT')
-##        self.aline = readInput1Sheet(wbInput,'LINE')
-##        self.atrf2 = readInput1Sheet(wbInput,'MBA2')
-##        self.atrf3 = readInput1Sheet(wbInput,'MBA3')
-##        self.aprofile = readInput1Sheet(wbInput,'PROFILE')
-##        self.ashuntPla = readInput1Sheet(wbInput,'SHUNT_PLACEMENT')
-
         ns = 0
         for i in range(len(self.asource['ID'])):
             b1 = self.asource['BUS_ID'][i]
@@ -769,11 +693,11 @@ def test_psm():
     ARGVS.fi = 'inputs\\Inputs12.xlsx'
 ##    varFlag = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12, 13, 14, 15, 16,0,1]
     brOff = [9,12]
-    shuntOff = []
+    shuntOff = [1]
     #
 
     p1 = DATAP_PF(ARGVS.fi)
-    v1 = p1.run1Config(brOff,fo=ARGVS.fo)
+    v1 = p1.run1Config(brOff,shuntOff,fo=ARGVS.fo)
 ##    print(v1)
 ##    v1 = p1.run1Config_WithObjective(lineOff=lineOff,shuntOff=shuntOff,fo=ARGVS.fo)
 ##    print('time %.5f'%(time.time()-t01))

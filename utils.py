@@ -32,7 +32,12 @@ def readSetting(wbInput,sh1,nmax=500):
         si = ws.cell(i,1).value
         if type(si)==str and not si.startswith('##'):
             if type(si)==str and len(si)>2 and si[2]=='_':
-                res[si] = getVal(ws.cell(i,2).value)
+                va1 = []
+                for j in range(2,100):
+                    v11 = getVal(ws.cell(i,j).value)
+                    if v11!=None:
+                        va1.append(v11)
+                res[si] = va1
     return res
 
 # read 1 sheet excel
