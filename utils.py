@@ -3,24 +3,24 @@ __copyright__ = "Copyright 2023"
 __license__   = "All rights reserved"
 __email__     = "phuong.phamquang@hust.edu.vn"
 __status__    = "in Dev"
-__version__   = "2.0.0"
+__version__   = "2.0.1"
 import os
 import tempfile,random,string
 
 #
-def todict(av):
+def todict(av,Raw=0):
     res = dict()
     ka = av.keys()
     for i in range(len(av['ID'])):
         k1 = av['ID'][i]
+        v1 = dict()
         try:
             flag = av['FLAG'][i]
         except:
             flag = 1
-        if flag==1:
-            v1 = dict()
+        if flag==1 or Raw:
             for k2 in av.keys():
-                if k2 not in {'ID','FLAG'}:
+                if k2 !='ID':
                     v1[k2] = av[k2][i]
             res[k1] = v1
     return res
@@ -36,7 +36,7 @@ def readSetting(wbInput,sh1,nmax=500):
     return res
 
 # read 1 sheet excel
-def readInput1Sheet(wbInput,sh1,nmax=20000):
+def readInput1Sheet(wbInput,sh1,nmax=20000,Raw=0):
     res = {}
     setNo = set()
     try:
@@ -60,13 +60,13 @@ def readInput1Sheet(wbInput,sh1,nmax=20000):
     for i in range(1,nmax):
         v1 = ws.cell(2,i).value
         if v1==None:
-            return todict(res)
+            return todict(res,Raw)
         va = []
         #
         for i1 in range(3,k):
             va.append( getVal(ws.cell(i1,i).value) )
         res[str(v1)]=va
-    return todict(res)
+    return todict(res,Raw)
 #
 def add2CSV(nameFile,ares,delim):
     """

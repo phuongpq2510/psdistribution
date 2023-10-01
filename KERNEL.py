@@ -3,7 +3,7 @@ __copyright__ = "Copyright 2023"
 __license__   = "All rights reserved"
 __email__     = "phuong.phamquang@hust.edu.vn"
 __status__    = "in Dev"
-__version__   = "2.0.1"
+__version__   = "2.0.2"
 """
 about: ....
 """
@@ -89,20 +89,20 @@ def getIsland(busC0,busSlack,flagSlack=False):
 
 #
 class DATAP:
-    def __init__(self,fi):
+    def __init__(self,fi,Raw=1): # Raw = 0 ignore out of service object
         wbInput = openpyxl.load_workbook(os.path.abspath(fi),data_only=True)
 
         #setting
         self.setting = utils.readSetting(wbInput,'SETTING')
         # bus
-        self.abus = utils.readInput1Sheet(wbInput,'BUS')
-        self.asource = utils.readInput1Sheet(wbInput,'SOURCE')
-        self.ashunt = utils.readInput1Sheet(wbInput,'SHUNT')
-        self.aline = utils.readInput1Sheet(wbInput,'LINE')
-        self.atrf2 = utils.readInput1Sheet(wbInput,'TRF2')
-        self.atrf3 = utils.readInput1Sheet(wbInput,'TRF3')
-        self.aprofile = utils.readInput1Sheet(wbInput,'PROFILE')
-        self.ashuntPla = utils.readInput1Sheet(wbInput,'SHUNT_PLACEMENT')
+        self.abus = utils.readInput1Sheet(wbInput,'BUS',Raw=Raw)
+        self.asource = utils.readInput1Sheet(wbInput,'SOURCE',Raw=Raw)
+        self.ashunt = utils.readInput1Sheet(wbInput,'SHUNT',Raw=Raw)
+        self.aline = utils.readInput1Sheet(wbInput,'LINE',Raw=Raw)
+        self.atrf2 = utils.readInput1Sheet(wbInput,'TRF2',Raw=Raw)
+        self.atrf3 = utils.readInput1Sheet(wbInput,'TRF3',Raw=Raw)
+        self.aprofile = utils.readInput1Sheet(wbInput,'PROFILE',Raw=Raw)
+        self.ashuntPla = utils.readInput1Sheet(wbInput,'SHUNT_PLACEMENT',Raw=Raw)
 
         """
         self.busC1       connect of BUS                  {b1:{l1,l2,..}
@@ -293,7 +293,7 @@ class DATAP:
 # data for Power Flow
 class DATAP_PF(DATAP):
     def __init__(self,fi):
-        super().__init__(fi)
+        super().__init__(fi,0)
 ##        self._getProfile()
 ##        print(self.agen[0])
 ##        print(self.agen[2])
@@ -683,7 +683,7 @@ class DATAP_PF(DATAP):
 # data for Recloser Optim
 class DATAP_REOP(DATAP):
     def __init__(self,fi):
-        super().__init__(fi)
+        super().__init__(fi,0)
     #
     def getData(self):
         # bus
