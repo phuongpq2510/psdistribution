@@ -9,9 +9,13 @@ from openpyxl.styles import Alignment
 import os
 import win32com.client as win32
 import sys
+
 class Convert:
     def __init__(self,db_file,excel):
-        self.wb=openpyxl.load_workbook(excel)
+
+        self.ex = win32.gencache.EnsureDispatch('Excel.Application')
+        self.wb = self.ex.Workbooks.Open(excel)
+
 
         self.conn,self.cursor=self.connect_db(db_file)
         ##Node ID, Name_node,  Un at Node
@@ -217,20 +221,37 @@ class Convert:
         return
 
     def get_name_column(self,sheet):
+
+        # Mở một tệp Excel có sẵn
+
+        worksheet = self.wb.Sheets(sheet)
+
+
+        # Lấy số cột trong hàng thứ 1
+        num_columns = worksheet.UsedRange.Columns.Count
+
+        # Khởi tạo một danh sách để lưu giá trị từng ô
+        values_in_row = []
         number_of_column={}
-        column_order = [col[0].column for col in sheet.iter_cols()]
-        for row in sheet.iter_rows(min_row=2,max_row=2):
-            for col_num, cell in enumerate(row):
-                column_name = column_order[col_num]
-                cell_value = cell.value
-                number_of_column[cell_value]=column_name
-        return number_of_column
+        # Lặp qua từng ô trong hàng thứ 1
+        i=1
+        for column_index in range(1, num_columns + 1):
+            # Lấy giá trị từng ô
+            cell = worksheet.Cells(2, column_index)
+            cell_value = cell.Value
+            number_of_column[cell_value]=i
+            i+=1
+
+        # Đóng tệp Excel
+        # self.wb.Close(SaveChanges=False)
+        # ex.Quit()
+
+        return number_of_column,worksheet
     def convert_excel_BUS(self,excel):
         ## Sheet BUS
-        sheet=self.wb['BUS']
-        number_of_column=self.get_name_column(sheet)
+        number_of_column,worksheet=self.get_name_column('BUS')
         # Tạo kiểu căn giữa
-        center_alignment = Alignment(horizontal='center', vertical='center')
+
         
         ## Coord X,y
         Coord=self.Graphic_node()  
@@ -239,15 +260,15 @@ class Convert:
         for i,node in enumerate(self.Node['Node_ID']):
 
             ##Node_ID
-            self.value_excel(sheet,center_alignment,node,row,number_of_column['ID'])
+            self.value_excel(worksheet,row,number_of_column['ID'],node)
 
             ##Bus_Name
             value1 = self.Node['Name'][node]
-            self.value_excel(sheet,center_alignment,value1,row,number_of_column['NAME'])
+            self.value_excel(worksheet,row,number_of_column['NAME'],value1)
 
             ##kV
             value1 = self.Node['Un'][node]
-            self.value_excel(sheet,center_alignment,value1,row,number_of_column['kV'])
+            self.value_excel(worksheet,row,number_of_column['kV'],value1)
             ##PQ
             # P=0
             # Q=0
@@ -255,24 +276,25 @@ class Convert:
                 P = self.Load[node][0]
                 Q = self.Load[node][1]
                 ##code
-                # self.value_excel(sheet,center_alignment,1,row,number_of_column['CODE'])
+                # self.value_excel(sheet,1,row,number_of_column['CODE'])
 
-                self.value_excel(sheet,center_alignment,P,row,number_of_column['PLOAD [kw]'])
-                self.value_excel(sheet,center_alignment,Q,row,number_of_column['QLOAD [kvar]'])
+                self.value_excel(worksheet,row,number_of_column['PLOAD'],P)
+                self.value_excel(worksheet,row,number_of_column['QLOAD'],Q)
             ## X,Y Coord
-            self.value_excel(sheet,center_alignment,Coord[node][0],row,number_of_column['xCoord'])
-            self.value_excel(sheet,center_alignment,Coord[node][1],row,number_of_column['yCoord'])
+            self.value_excel(worksheet,row,number_of_column['xCoord'],Coord[node][0])
+            self.value_excel(worksheet,row,number_of_column['yCoord'],Coord[node][1])
+
             ##Code Infeeder
             # if node in self.Infeeder:
-            #     self.value_excel(sheet,center_alignment,3,row,number_of_column['CODE'])
+            #     self.value_excel(sheet,3,row,number_of_column['CODE'])
             row+=1
+
         return
     def convert_excel_LINE(self,excel):
-        sheet=self.wb['LINE']
+        number_of_column,worksheet=self.get_name_column('LINE')
 
         ## Get_name column
-        number_of_column=self.get_name_column(sheet)
-        center_alignment = Alignment(horizontal='center', vertical='center')
+
         row=3
         column=1
 
@@ -280,68 +302,68 @@ class Convert:
         for key, value in self.Line['Line'].items():
 
             ## Element line 
-            self.value_excel(sheet,center_alignment,key,row,number_of_column['ID'])
+            self.value_excel(worksheet,row,number_of_column['ID'],key)
             ##frombus tobus
             i=number_of_column['BUS_ID1']
-            i1=number_of_column['NAME1']
+            # i1=number_of_column['NAME1']
             for values in value:
-                self.value_excel(sheet,center_alignment,values,row,i)
+                self.value_excel(worksheet,row,i,values)
      
-                self.value_excel(sheet,center_alignment,self.Node['Name'][values],row,i1)
-                i1+=1
+                # self.value_excel(worksheet,row,self.Node['Name'][values],i1)
+                # i1+=1
                 i+=1
 
             ##Name1
 
             ##length
-            self.value_excel(sheet,center_alignment,self.Line['Length'][key],row,number_of_column['LENGTH'])
+            self.value_excel(worksheet,row,number_of_column['LENGTH [km]'],self.Line['Length'][key])
             ## R
-            self.value_excel(sheet,center_alignment,self.Line['r'][key],row,number_of_column['R [Ohm/km]'])
+            self.value_excel(worksheet,row,number_of_column['R [Ohm/km]'],self.Line['r'][key])
             ## X
-            self.value_excel(sheet,center_alignment,self.Line['x'][key],row,number_of_column['X [Ohm/km]'])
+            self.value_excel(worksheet,row,number_of_column['X [Ohm/km]'],self.Line['x'][key]       )
             ## Buckle Point
             if key in BucklePoint:
 
-                self.value_excel(sheet,center_alignment,BucklePoint[key][0],row,number_of_column['xCoord'])
-                self.value_excel(sheet,center_alignment,BucklePoint[key][1],row,number_of_column['yCoord'])
+                self.value_excel(worksheet,row,number_of_column['xCoord'],BucklePoint[key][0])
+                self.value_excel(worksheet,row,number_of_column['yCoord'],BucklePoint[key][1])
     
             ## R
             row+=1
+
         return
 
     def convert_excel_SOURCE(self,excel):
-        sheet=self.wb['SOURCE']
-        number_of_column=self.get_name_column(sheet)
-        center_alignment = Alignment(horizontal='center', vertical='center')
+        number_of_column,worksheet=self.get_name_column('SOURCE')
         row=3
         column=1
         for key, value in self.Infeeder['Info'].items():
 
             ## Element line 
-            self.value_excel(sheet,center_alignment,key,row,number_of_column['ID'])
-            self.value_excel(sheet,center_alignment,value,row,number_of_column['BUS_ID'])
-            self.value_excel(sheet,center_alignment,self.Node['Name'][value],row,number_of_column['NAME'])
-            self.value_excel(sheet,center_alignment,self.Node['Un'][value],row,number_of_column['kV'])
-            self.value_excel(sheet,center_alignment,self.Infeeder['vGen'][key]/100,row,number_of_column['vGen [pu]'])
+            self.value_excel(worksheet,row,number_of_column['ID'],key)
+            self.value_excel(worksheet,row,number_of_column['BUS_ID'],value)
+            # self.value_excel(sheet,row,number_of_column['NAME'],self.Node['Name'][value])
+            # self.value_excel(sheet,row,number_of_column['kV'],self.Node['Un'][value])
+            self.value_excel(worksheet,row,number_of_column['vGen [pu]'],self.Infeeder['vGen'][key]/100)
 
-            self.value_excel(sheet,center_alignment,self.Infeeder['aGen'][key],row,number_of_column['aGen [deg]'])
+            self.value_excel(worksheet,row,number_of_column['aGen [deg]'],self.Infeeder['aGen'][key])
             row+=1
+
         return
 
     def convert_excel_Shunt(self,excel):
-        sheet=self.wb['SHUNT']
-        number_of_column=self.get_name_column(sheet)
-        center_alignment = Alignment(horizontal='center', vertical='center')
+        number_of_column,worksheet=self.get_name_column('SHUNT')
+
+    
         row=3
         column=1
         for key, value in self.Shunt['Info'].items():
             for key1,value1 in self.Shunt['Info'][key].items():
                 # Element line 
-                self.value_excel(sheet,center_alignment,key1,row,number_of_column['ID'])
-                self.value_excel(sheet,center_alignment,key,row,number_of_column['BUS_ID'])
-                self.value_excel(sheet,center_alignment,self.Shunt['Name'][key1],row,number_of_column['NAME'])
-                self.value_excel(sheet,center_alignment,self.Node['Un'][key],row,number_of_column['kV'])
-                self.value_excel(sheet,center_alignment,value1,row,number_of_column['Qshunt [kvar]'])
+                self.value_excel(worksheet,row,number_of_column['ID'],key1)
+                self.value_excel(worksheet,row,number_of_column['BUS_ID'],key)
+                # self.value_excel(sheet,row,number_of_column['NAME'],self.Shunt['Name'][key1])
+                # self.value_excel(sheet,self.Node['Un'][key],row,number_of_column['kV'])
+                self.value_excel(worksheet,row,number_of_column['Qshunt'],value1)
                 row+=1
         return
 
@@ -382,20 +404,16 @@ class Convert:
                     res[key][i] = ' '.join(map(str, res[key][i]))    
        
         return res
-    def value_excel(self,sheet,center_alignment,value,row,column):
-        cell = sheet.cell(row, column)
-        cell.value = value
-        cell.alignment = center_alignment
-
-
+    def value_excel(self,worksheet,row,column,value):
+        worksheet.Cells(row, column).Value = value
 
     def main(self,excel):
         self.convert_excel_BUS(excel)
         self.convert_excel_LINE(excel)
         self.convert_excel_Shunt(excel)
         self.convert_excel_SOURCE(excel)
-        self.wb.save(excel)
-        self.wb.close()
+        self.wb.Save()
+        self.ex.Quit()
         return
 def Creat_new_excel():
     path = os.getcwd()
@@ -450,11 +468,14 @@ def Set_File():
     return
 
 if __name__ == '__main__':
+
     excel=Creat_new_excel()
     db_file='database.db'
-    # excel='test.xlsx'
+    # # excel='test.xlsx'
+    # excel='E:\Git\psdistribution\convertSincal\Default.xlsx'
     convert=Convert(db_file,excel)
-   
-    # convert.Graphic_Line()
+    
+    # convert.convert_excel_BUS(excel)
+    # convert.convert_excel_LINE(excel)
     convert.main(excel)
-    Set_File()
+    # Set_File()
