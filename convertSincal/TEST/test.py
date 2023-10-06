@@ -13,10 +13,7 @@ import sys
 class Convert:
     def __init__(self,db_file,excel_file):
 
-        # self.ex = win32.gencache.EnsureDispatch('Excel.Application')
-        # self.wb = self.ex.Workbooks.Open(excel)
-
-        self.xlApp,self.wb,self.check=connect_excel(excel_file)
+        self.wb,self.check=connect_excel(excel_file)
 
         self.conn,self.cursor=self.connect_db(db_file)
         ##Node ID, Name_node,  Un at Node
@@ -43,7 +40,6 @@ class Convert:
         ## Infeeder Element : Node_ID 
         self.Infeeder = self.get_feeder()
         print('Indeeder\n', self.Infeeder)
-
 
 
     def connect_db(self,db_file):
@@ -223,8 +219,9 @@ class Convert:
 
     def get_name_column(self,sheet):
 
+        if self.check ==1 : ## connect win32
         # Mở một tệp Excel có sẵn
-        if self.check ==1 :
+
             worksheet = self.wb.Sheets(sheet)
 
 
@@ -243,15 +240,16 @@ class Convert:
                 number_of_column[cell_value]=i
                 i+=1
         else:
-            worksheet = self.wb[sheet]
+            print('ok')
+            sheett=self.wb[sheet]
             number_of_column={}
-            column_order = [col[0].column for col in worksheet.iter_cols()]
-            for row in worksheet.iter_rows(min_row=2,max_row=2):
+            column_order = [col[0].column for col in sheett.iter_cols()]
+            for row in sheett.iter_rows(min_row=2,max_row=2):
                 for col_num, cell in enumerate(row):
                     column_name = column_order[col_num]
                     cell_value = cell.value
                     number_of_column[cell_value]=column_name
-
+        print(number_of_column)
         # Đóng tệp Excel
         # self.wb.Close(SaveChanges=False)
         # ex.Quit()
@@ -298,6 +296,7 @@ class Convert:
             # if node in self.Infeeder:
             #     self.value_excel(sheet,3,row,number_of_column['CODE'])
             row+=1
+
         return
     def convert_excel_LINE(self,excel):
         number_of_column,worksheet=self.get_name_column('LINE')
@@ -414,24 +413,15 @@ class Convert:
        
         return res
     def value_excel(self,worksheet,row,column,value):
-        if self.check == 1 :
-            worksheet.Cells(row, column).Value = value
-        else:
-            center_alignment = Alignment(horizontal='center', vertical='center')
-            cell = worksheet.cell(row, column)
-            cell.value = value
-            cell.alignment = center_alignment
+        worksheet.Cells(row, column).Value = value
+
     def main(self,excel):
         self.convert_excel_BUS(excel)
         self.convert_excel_LINE(excel)
         self.convert_excel_Shunt(excel)
         self.convert_excel_SOURCE(excel)
-        if self.check == 1 :
-            self.wb.Save()
-            self.xlApp.Quit()
-        else :
-            self.wb.save(excel)
-            self.wb.close()
+        self.wb.Save()
+        self.ex.Quit()
         return
 def Creat_new_excel():
     path = os.getcwd()
@@ -452,7 +442,7 @@ def Creat_new_excel():
     ## Copy File default
     try:
         # Tạo một phiên làm việc với Excel
-        excel = win32.Dispatch('Excel.Application')
+        excel = win32.gencache.EnsureDispatch('Excel.Application')
 
         # Mở tệp Excel mẫu
         wb = excel.Workbooks.Open(path_default)
@@ -486,59 +476,49 @@ def Set_File():
     return
 def connect_excel(excel_file):
     try:
+    # Thử tạo một đối tượng COM bất kỳ
+        
         try:
-        # Thử tạo một đối tượng COM bất kỳ
-            
-            try:
-                import win32com.client
-            except:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "pywin32"])
-                import win32com.client
-            xlApp = win32com.client.Dispatch("Excel.Application")
-            xlBook = xlApp.Workbooks.Open(excel_file)
-            check=1
-            print('ok')
-            return xlApp,xlBook,check
+            import win32com.client
         except:
-            pass
-
-        ## Openpyxl
-        xlApp = 1
-        try:
-            try:
-                import openpyxl
-            except:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl"])
-                import openpyxl
-            xlBook = openpyxl.load_workbook(excel_file)
-            check=0
-            print('openpy')
-            return xlApp,xlBook,check
-        except:
-
-            raise Exception('Not found Excel (.xlsx) edit tool')
-
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "pywin32"])
+            import win32com.client
+        xlApp = win32com.client.Dispatch("Excel.Application")
+        xlBook = xlApp.Workbooks.Open(excel_file)
+        check=1
+        return xlBook,check
     except:
+        pass
+
+    ## Openpyxl
+    xlApp = None
+    try:
         try:
-            
-            os.system("taskkill /im excel.exe")
-            os.system('taskkill /f /im excel.exe')
-            print('ok')
-            convert(excel_file)
+            import openpyxl
         except:
-            pass
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "openpyxl"])
+            import openpyxl
+        xlBook = openpyxl.load_workbook(excel_file)
+        check=0
+        return xlBook,check
+    except:
+        raise Exception('Not found Excel (.xlsx) edit tool')
+
+
 if __name__ == '__main__':
 
-    
-    db_file='database.db'
+    # excel=Creat_new_excel()
+    # db_file='database.db'
     # # excel='test.xlsx'
-    # excel='E:\Git\psdistribution\convertSincal\Default.xlsx'
-    convert=Convert(db_file,excel)
-    excel=Creat_new_excel()
-    convert.convert_excel_BUS(excel)
-    # convert.convert_excel_LINE(excel)
-    convert.main(excel)
-    # Set_File()
-    
+    # excel_file='E:\Git\psdistribution\convertSincal\Default.xlsx'
+    # convert=Convert(db_file,excel)
+    # convert.get_name_column('BUS')
+    # convert.main(excel)
+    # connect_excel(excel_file)
+    ## convert database
+    # Set_File() 
 
     
+    # workbook.Save()
+    # workbook.Close()
+    # excel.Quit()
