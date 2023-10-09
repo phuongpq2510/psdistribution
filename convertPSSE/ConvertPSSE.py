@@ -48,14 +48,9 @@ class Convert_Excel_to_PSSE:
         bus={}
         load={}
         for row in sheet.iter_rows(min_row=3, values_only=True):
-            data=[]
-            data1=[]
             ## BUS
             ID, Name, kV  = row[0], row[1], row[2]
             psspy.bus_data_3(ID,[_i,_i,_i,_i],[row[2],_f,_f,_f,_f,_f,_f],row[1])
-
-
-            bus[ID]=[ID,Name,kV]
 
             ## LOAD
             if row[5] != None :
@@ -66,14 +61,43 @@ class Convert_Excel_to_PSSE:
 
         return bus,load
     def get_line(self):
+        sheet = self.wb['LINE']
+        for row in sheet.iter_rows(min_row=3, values_only=True):
+            frombus, tobus = row[1], row[2]
+            length,r,x,b = row[9],row[11],row[12],row[13]
+            rateA = row[14]
+            CID = str(row[5])
+
+            if frombus != None:
+                psspy.branch_data(frombus,tobus,CID,[1,frombus,_i,_i,_i,_i],[r, x,b,rateA,_f,_f,_f,_f,_f,_f,length,_i,_i,_i,_i])
         return
-    def bus(self):
+    def get_source(self):
+        sheet = self.wb['SOURCE']
+        for row in sheet.iter_rows(min_row=3, values_only=True):
+            bus_id = row[1]
+            vgen = row[6]
+            pgen = row[8]
+            Qmax = row[9]
+            Qmin = row[10]
+            if bus_id != None:
+                print(type(vgen))
+                psspy.plant_data(bus_id,_i,[ vgen, _f])
+        ## Add nguồn 
+                if pgen == None or pgen == 0:
+                   ## slack bus 
+                    psspy.machine_data_2(bus_id,r"""1""",[_i,_i,_i,_i,_i,_i],[_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f])
+                else:
+                    ## PV bus  
+                    psspy.machine_data_2(bus_id,r"""1""",[_i,_i,_i,_i,_i,_i],[pgen,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f,_f])
+        return
+    def get_shunt(self):
+        
         return
     def line(self):
         return
     def source(self):
         return
 if __name__ == '__main__':
-    Convert_Excel_to_PSSE('Inputs12.xlsx').get_bus()
+    Convert_Excel_to_PSSE('Inputs12.xlsx').get_source()
 
     psspy.save(r"""E:\Git\psdistribution\convertPSSE\test.sav""")
