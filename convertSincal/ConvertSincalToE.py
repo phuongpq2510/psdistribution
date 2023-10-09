@@ -3,11 +3,9 @@
 
 # -------------------------------
 import sqlite3
-import openpyxl
 import shutil
 from openpyxl.styles import Alignment
 import os
-import win32com.client as win32
 import sys
 
 class Convert:
@@ -55,7 +53,7 @@ class Convert:
         ## Get_ element_ID
         res = {}
         data=['Line','Load','ShuntCondensator','Infeeder']
-        for item in data:
+        for item in data :
             sql=f'SELECT Element_ID FROM Element WHERE Type= "{item}"'
             k = self.cursor.execute(sql)
             list1=[]
@@ -449,22 +447,7 @@ def Creat_new_excel():
             path_new = f"{base_name}_{counter}{extension}"
 
 
-    ## Copy File default
-    try:
-        # Tạo một phiên làm việc với Excel
-        excel = win32.Dispatch('Excel.Application')
-
-        # Mở tệp Excel mẫu
-        wb = excel.Workbooks.Open(path_default)
-
-        # Tạo một bản sao của tệp Excel mẫu
-        wb.SaveAs(path_new)
-
-        wb.Close()
-        excel.Quit()
-
-    except Exception as e:
-        print(f"Error: {e}")
+    shutil.copy(path_default, path_new)
 
     return path_new
 def Set_File():
@@ -512,7 +495,7 @@ def connect_excel(excel_file):
                 import openpyxl
             xlBook = openpyxl.load_workbook(excel_file)
             check=0
-            print('openpy')
+            
             return xlApp,xlBook,check
         except:
 
@@ -524,21 +507,16 @@ def connect_excel(excel_file):
             os.system("taskkill /im excel.exe")
             os.system('taskkill /f /im excel.exe')
             print('ok')
-            convert(excel_file)
+            connect_excel(excel_file)
         except:
             pass
 if __name__ == '__main__':
 
-    
-    db_file='database.db'
-    # # excel='test.xlsx'
-    # excel='E:\Git\psdistribution\convertSincal\Default.xlsx'
-    convert=Convert(db_file,excel)
     excel=Creat_new_excel()
-    convert.convert_excel_BUS(excel)
-    # convert.convert_excel_LINE(excel)
+    db_file='database.db'
+    convert=Convert(db_file,excel)
     convert.main(excel)
-    # Set_File()
+    Set_File()
     
 
     
