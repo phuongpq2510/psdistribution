@@ -1,6 +1,6 @@
 # encoding: utf-8
 import openpyxl, os, sys, shutil
-import numpy as np
+from openpyxl.styles import Alignment
 from openpyxl import load_workbook
 
 sys_path_PSSE=r'C:\\Program Files (x86)\\PTI\\PSSE33\\PSSBIN' 
@@ -12,17 +12,13 @@ import psspy
 psspy.psseinit(1000)
 from psspy import _i, _f, _s
 
-# class get_data_psse:
-# 	def __init__(self):
-# 		self.node = {}
-# 		self.source = {}
-# 		self.line = {}
-# 		self.shunt = {}
 
 def array2dict(dict_keys, dict_values):
+
     tmpdict = {}
     for i in range(len(dict_keys)):
         tmpdict[dict_keys[i]] = dict_values[i]
+
     return tmpdict
 
 def get_bus_data():
@@ -42,22 +38,21 @@ def get_bus_data():
 	res = {}
 	for i in range(len(ibuses['NUMBER'])):
 		bus = ["NAME", "kV"]
-		value = [cbuses['NAME'][i], rbuses['BASE'][i]]
+		value = [cbuses['NAME'][i].strip(), rbuses['BASE'][i]]
 		buses = array2dict(bus, value)
 		res[ibuses['NUMBER'][i]] = buses
 
 	return res
 	
 def get_machine_data():
+
 	istrings = ['NUMBER','STATUS']
 	ierr, iarray = psspy.amachint(sid, flag_machine, istrings)
 	imachines = array2dict(istrings, iarray)
-	print(imachines)
 
 	rstrings = ['PGEN','QGEN','QMAX','QMIN']
 	ierr, rarray = psspy.amachreal(sid, flag_machine, rstrings)
 	rmachines = array2dict(rstrings, rarray)
-	print (rmachines)
 
 	cstrings = ['ID', 'NAME', 'EXNAME']
 	ierr, carray = psspy.amachchar(sid, flag_machine, cstrings)
@@ -66,13 +61,14 @@ def get_machine_data():
 	a = 1
 	for i in range(len(imachines['NUMBER'])):
 		elements = ['BUS_ID', 'NAME', 'FLAG','Pgen', 'Qmax', 'Qmin']
-		values = [imachines['NUMBER'][i], cmachines['ID'][i], imachines['STATUS'][i],rmachines['PGEN'][i], rmachines['QMAX'][i], rmachines['QMIN'][i]]
+		values = [imachines['NUMBER'][i], cmachines['NAME'][i].strip(), imachines['STATUS'][i],rmachines['PGEN'][i], rmachines['QMAX'][i], rmachines['QMIN'][i]]
 		machines = array2dict(elements, values)
 		res[a] = machines
 		a += 1 
 	return res
 
 def get_plant_data():
+
 	istrings = ['TYPE', 'NUMBER', 'STATUS']
 	ierr, iarray = psspy.agenbusint(sid, flag_plant, istrings)
 	iplants = array2dict(istrings, iarray)
@@ -88,6 +84,7 @@ def get_plant_data():
 				res[keys]['CODE'] = 1 if iplants['TYPE'][i] == 2 else 0
 				res[keys]['vGen [pu]'] = rplants['PU'][i]
 				res[keys]['aGen [deg]'] = rplants['ANGLED'][i]
+				res[keys]['kV'] = rplants['BASE'][i]
 
 	return res
 
@@ -112,21 +109,32 @@ def get_line_data():
 	res = {}
 	a = 1
 	for i in range(len(ibranches['FROMNUMBER'])):
+
+		#tinh toan R0, X0, B0
 		ierr, U_base = psspy.busdat(int(ibranches['FROMNUMBER'][i]), 'BASE')
 		Zbase = ((U_base)**2)/S_base
-		R_0 = ((xbranches['RX'][i].real)*Zbase)/rbranches['LENGTH'][i]
-		X_0 = ((xbranches['RX'][i].imag)*Zbase)/rbranches['LENGTH'][i]
-		B_0 = (rbranches['CHARGING'][i])*(10**6)/((Zbase)*(rbranches['LENGTH'][i]))
+		if rbranches['LENGTH'][i] != 0 :
+			lenght = rbranches['LENGTH'][i]
+			R_0 = ((xbranches['RX'][i].real)*Zbase)/rbranches['LENGTH'][i]
+			X_0 = ((xbranches['RX'][i].imag)*Zbase)/rbranches['LENGTH'][i]
+			B_0 = (rbranches['CHARGING'][i])*(10**6)/((Zbase)*(rbranches['LENGTH'][i]))
+
+		else:
+			lenght = 1
+			R_0 = xbranches['RX'][i].real
+			X_0 = xbranches['RX'][i].imag
+			B_0 = rbranches['CHARGING'][i]
+
 		keys = ['BUS_ID1', 'BUS_ID2', 'NAME BUS', 'CID', 'FLAG', 'LENGTH [km]', 'RATEA [A]', 'R [Ohm/km]', 'X [Ohm/km]', 'B [microS/km]', 'kV']
-		values = [ibranches['FROMNUMBER'][i], ibranches['TONUMBER'][i], cbranches['FROMNAME'][i] + '-' + cbranches['TONAME'][i],
-		 cbranches['ID'],ibranches['STATUS'][i], rbranches['LENGTH'][i], rbranches['RATEA'][i], R_0, X_0, B_0, U_base]
+		values = [ibranches['FROMNUMBER'][i], ibranches['TONUMBER'][i], cbranches['FROMNAME'][i].strip() + '-' + cbranches['TONAME'][i].strip(),
+		 int(cbranches['ID'][i]), ibranches['STATUS'][i], lenght, rbranches['RATEA'][i], R_0, X_0, B_0, U_base]
 		lines = array2dict(keys, values)
 		res[a] = lines
 		a += 1
 
 	return res
 
-def get_shunt_data(): #chua lay duoc Qshunt
+def get_shunt_data(): 
 
 	istrings = ['NUMBER', 'STATUS']
 	ierr, iarray = psspy.afxshuntint(sid, flag_shunt, istrings)
@@ -150,8 +158,8 @@ def get_shunt_data(): #chua lay duoc Qshunt
 	for i in range(len(ishunts['NUMBER'])):
 		ierr, U_base = psspy.busdat(int(ishunts['NUMBER'][i]), 'BASE')
 		ierr, rval = psspy.fxsdt2(ishunts['NUMBER'][i], str(1),'NOM')
-		keys = ['BUS_ID', 'NAME', 'kV', 'Qshunt', 'FLAG' ]
-		values = [ishunts['NUMBER'][i], cshunts['NAME'][i], U_base, rval, ishunts['STATUS'][i]]
+		keys = ['BUS_ID', 'NAME', 'kV', 'Qshunt', 'FLAG', 'MEMO' ]
+		values = [ishunts['NUMBER'][i], cshunts['NAME'][i].strip(), U_base, rval.imag, ishunts['STATUS'][i], 'MVar' if a == 1 else '']
 		shunts = array2dict(keys, values)
 		res[a] = shunts
 		a += 1
@@ -163,7 +171,6 @@ def get_load_data(): #kiem tra lai ID va BUSNUMBER
 	istrings = ['NUMBER', 'STATUS']
 	ierr, iarray = psspy.alodbusint(sid, flag_load, istrings)
 	iloads = array2dict(istrings, iarray)
-	print (iloads)
 
 	rstrings = ['BASE', 'MVANOM']
 	ierr, rarray = psspy.alodbusreal(sid, flag_load, rstrings)
@@ -172,7 +179,6 @@ def get_load_data(): #kiem tra lai ID va BUSNUMBER
 	xstrings = ['MVANOM']
 	ierr, xarray = psspy.alodbuscplx(sid, flag_load, xstrings)
 	xloads = array2dict(xstrings, xarray)
-	print(xloads)
 
 	cstrings = ['NAME', 'EXNAME']
 	ierr, carray = psspy.alodbuschar(sid, flag_load, cstrings)
@@ -181,7 +187,7 @@ def get_load_data(): #kiem tra lai ID va BUSNUMBER
 	res = {}
 	for i in range(len(iloads['NUMBER'])):
 		keys = ['NAME', 'kV', 'FLAG', 'PLOAD', 'QLOAD', 'MEMO']
-		values = [cloads['NAME'][i], rloads['BASE'][i] ,iloads['STATUS'][i], xloads['MVANOM'][i].real,xloads['MVANOM'][i].imag, 'kva,kw']
+		values = [cloads['NAME'][i].strip(), rloads['BASE'][i] ,iloads['STATUS'][i], xloads['MVANOM'][i].real,xloads['MVANOM'][i].imag, 'kva,kw']
 		loads = array2dict(keys, values)
 		res[iloads['NUMBER'][i]]= loads
 
@@ -226,7 +232,8 @@ def get_X2_data():
 		p0 = round((G*(kV**2)*100),1)
 
 		keys = ['BUS_ID1', 'BUS_ID2', 'NAME BUS', 'kV', 'CID', 'NAME MBA2', 'FLAG', 'Sn', 'uk [%]', 'pk', 'P0', 'i0 [%]', 'MEMO']
-		values = [ix2['FROMNUMBER'][i], ix2['TONUMBER'][i], cx2['FROMNAME'][i] + '-' + cx2['TONAME'][i], kV, cx2['ID'][i], cx2['XFRNAME'][i], ix2['STATUS'][i], Sn, uk, pk, p0, i0, 'kW']
+		values = [ix2['FROMNUMBER'][i], ix2['TONUMBER'][i], cx2['FROMNAME'][i].strip() + '-' + cx2['TONAME'][i].strip(), kV, int(cx2['ID'][i]), cx2['XFRNAME'][i].strip(), 
+		ix2['STATUS'][i], Sn, uk, pk, p0, i0, 'kW(P), MVA(S)']
 		x2Trans = array2dict(keys, values)
 		res[a] = x2Trans
 		a += 1 
@@ -237,45 +244,48 @@ def get_X3_data():
 
 	return
 
-def set_data_dict():
+def set_bus_data_dict(bus_data_dict, load_data_dict):
 
-	return
+	for keys, values in bus_data_dict.items():
+		for key, value in load_data_dict.items():
+			if key == keys:
+				bus_data_dict[keys]['QLOAD'] = load_data_dict[key]['QLOAD']
+				bus_data_dict[keys]['PLOAD'] = load_data_dict[key]['PLOAD']
+				bus_data_dict[keys]['FLAG'] = load_data_dict[key]['FLAG']
+				bus_data_dict[keys]['MEMO'] = load_data_dict[key]['MEMO']
+
+	return bus_data_dict
 
 def add_data_excel(data_dict, excel_file, sheet_name):
-    workbook = openpyxl.load_workbook(excel_file)
+
+    workbook = openpyxl.load_workbook(excel_file, read_only=False, data_only=False)
     sheet = workbook[sheet_name]
     row = sheet[2]
-
-    # Duyệt qua từng ô trong hàng thứ 2 để tìm cột
-    a = {}
-    for cell in row:
-        if cell.value is None:
-            break
-        else:
-            value = cell.value
-            column = cell.column_letter
-            a[value] = column
-
-    # Bắt đầu từ hàng 3 để bỏ qua hàng tiêu đề
+    a = {cell.value: cell.column_letter for cell in row if cell.value is not None}
     i = 3
     for keys, values in data_dict.items():
-        cot = a['ID']
+        cot = a.get('ID')
+        if cot is None:
+            return
         hang = i
         sheet[cot + str(hang)] = keys
+        sheet[cot + str(hang)].alignment = Alignment(horizontal='center', vertical='center')
         for key, value in data_dict[keys].items():
-            o = a[key] + str(i)
-            sheet[o] = value
+            o = a.get(key)
+            if o is not None:
+                sheet[o + str(i)] = value
+                sheet[o + str(i)].alignment = Alignment(horizontal='center', vertical='center')
         i += 1
-
     workbook.save(excel_file)
+    workbook.close()
 
 if __name__ == '__main__':
 
 	default_file = 'default.xlsx'
-	output_file = 'Output.xlsx'
-	excel_file = shutil.copy(default_file, output_file)
-	# sav_file = 'savnw.sav'
-	sav_file = 'file5bus(psse33).sav'
+	excel_file = 'Output.xlsx'
+	shutil.copy(default_file, excel_file)
+	sav_file = 'savnw.sav'
+	# sav_file = 'file5bus(psse33).sav'
 
 	sid = -1
 	flag_bus     = 2    # in-service
@@ -293,12 +303,23 @@ if __name__ == '__main__':
 	ierr = psspy.case(sav_file)
 	# psspy.fnsl([0,0,0,1,1,0,99,0])
 	S_base = psspy.sysmva()
-	
-	# print(get_bus_data())
-	# print(get_load_data())
-	# print(get_line_data())
-	# print(get_shunt_data())
-	# print(get_load_data())
-	# print(get_X2_data())
+
+	get_machine_data()
+	source_data_dict = get_plant_data()
+	add_data_excel(source_data_dict, excel_file, 'SOURCE')
+
+	shunts_data_dict = get_shunt_data()
+	add_data_excel(shunts_data_dict, excel_file, 'SHUNT')
+
+	lines_data_dict = get_line_data()
+	add_data_excel(lines_data_dict, excel_file, 'LINE')
+
+	x2Trans_data_dict = get_X2_data()
+	add_data_excel(x2Trans_data_dict, excel_file, 'TRF2')
+
+	bus_data_dict = get_bus_data()
+	load_data_dict = get_load_data()
+	allbus_data_dict = set_bus_data_dict(bus_data_dict, load_data_dict)
+	add_data_excel(allbus_data_dict, excel_file, 'BUS')
 
 
