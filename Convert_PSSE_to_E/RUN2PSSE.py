@@ -330,8 +330,6 @@ def Creat_new_excel():
 if __name__ == '__main__':
 
 	excel_file = Creat_new_excel()
-	# sav_file = 'savnw.sav'
-	# sav_file = 'file5bus(psse33).sav'
 
 	sid = -1
 	flag_bus     = 2    # in-service
@@ -347,7 +345,6 @@ if __name__ == '__main__':
 	owner_brflow = 1    # bus, ignored if sid is -ve
 	ties_brflow  = 5
 
-	# ierr = psspy.case(sav_file)
 	# psspy.fnsl([0,0,0,1,1,0,99,0])
 	S_base = psspy.sysmva()
 
@@ -371,5 +368,7 @@ if __name__ == '__main__':
 
 	x3Trans_data_dict = get_X3_data()
 	add_data_excel(x3Trans_data_dict, excel_file, 'TRF3')
+
+	print ('Successfully created file')
 
 
