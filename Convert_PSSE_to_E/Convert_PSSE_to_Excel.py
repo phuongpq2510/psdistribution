@@ -242,7 +242,50 @@ def get_X2_data():
 
 def get_X3_data():
 
-	return
+	istrings = ['WIND1NUMBER', 'WIND2NUMBER', 'WIND3NUMBER', 'STATUS']
+	ierr, iarray = psspy.atr3int(sid, _i, 3, flag_x3, 2, istrings)
+	ix3 = array2dict(istrings, iarray)
+
+	xstrings = ['RX1-2NOM', 'RX2-3NOM', 'RX3-1NOM', 'YMAG']
+	ierr, xarray = psspy.atr3cplx(sid, _i, 3, flag_x3, 2, xstrings)
+	xx3 = array2dict(xstrings, xarray)
+
+	cstrings = ['ID', 'WIND1NAME', 'WIND2NAME', 'WIND3NAME', 'XFRNAME']
+	ierr, carray = psspy.atr3char(sid, _i, 3, flag_x3, 2, cstrings)
+	cx3 = array2dict(cstrings, carray)
+
+	rstrings = ['SBASE']
+	ierr, rarray = psspy.awndreal(sid, _i, 3, flag_x3, 2, rstrings)
+	rx3 = array2dict(rstrings, rarray)
+	
+	res ={}
+	a = 1
+	for i in range(len(ix3['WIND3NUMBER'])):
+
+		S_h = max(rx3['SBASE'])
+
+		pk1_2 = xx3['RX1-2NOM'][i].real*1000*(S_h**2)/S_base
+		pk2_3 = xx3['RX2-3NOM'][i].real*1000*(S_h**2)/S_base
+		pk3_1 = xx3['RX3-1NOM'][i].real*1000*(S_h**2)/S_base
+
+		uk1_2 = xx3['RX1-2NOM'][i].imag*100*S_h/S_base
+		uk2_3 = xx3['RX2-3NOM'][i].imag*100*S_h/S_base
+		uk3_1 = xx3['RX3-1NOM'][i].imag*100*S_h/S_base
+
+		p_0 = xx3['YMAG'][i].real*1000*S_base
+		i_0 = xx3['YMAG'][i].imag*100*S_base/S_h
+
+		keys = ['BUS_ID1', 'BUS_ID2', 'BUS_ID3', 'NAME BUS', 'CID', 'NAME MBA3', 'FLAG', 'Sn1', 'Sn2', 'Sn3', 'uk1-2   [%]', 'uk1-3   [%]', 
+		'uk2-3   [%]', 'pk1-2', 'pk1-3', 'pk2-3', 'P0', 'i0     [%]', 'MEMO']
+
+		values = [ix3['WIND1NUMBER'][i], ix3['WIND2NUMBER'][i], ix3['WIND3NUMBER'][i], str(cx3['WIND1NAME'][i].strip()) +'-'+ str(cx3['WIND2NAME'][i].strip()) + '-' + str(cx3['WIND3NAME'][i].strip()), 
+		str(cx3['ID'][i]), cx3['XFRNAME'][i].strip(), ix3['STATUS'][i], rx3['SBASE'][0], rx3['SBASE'][1], rx3['SBASE'][2], uk1_2, uk3_1, uk2_3, pk1_2, pk3_1, pk2_3, p_0, i_0, 'MVA, KW' ]
+		x3Trans = array2dict(keys, values)
+
+		res[a] = x3Trans
+		a += 1
+
+	return res
 
 def set_bus_data_dict(bus_data_dict, load_data_dict):
 
@@ -279,11 +322,24 @@ def add_data_excel(data_dict, excel_file, sheet_name):
     workbook.save(excel_file)
     workbook.close()
 
+def Creat_new_excel():
+    path = os.getcwd()
+    path_default = os.path.join(path, 'default.xlsx')
+    path_new = os.path.join(path, 'output.xlsx')
+
+    counter = 1
+    while os.path.isfile(path_new):
+        base_name, extension = os.path.splitext(path_new)
+        path_new = "{0}({1}){2}".format(base_name, counter, extension)
+        counter += 1
+
+    shutil.copy(path_default, path_new)
+
+    return path_new
+
 if __name__ == '__main__':
 
-	default_file = 'default.xlsx'
-	excel_file = 'Output.xlsx'
-	shutil.copy(default_file, excel_file)
+	excel_file = Creat_new_excel()
 	sav_file = 'savnw.sav'
 	# sav_file = 'file5bus(psse33).sav'
 
@@ -294,7 +350,8 @@ if __name__ == '__main__':
 	flag_load    = 4    # for all load buses, including those with only out-ofservice loads
 	flag_line    = 2    # chỉ lấy các nhánh không có mba
 	flag_shunt   = 4    # for all fixed bus shunts.
-	flag_x2      = 2    #for all two-winding transformers.
+	flag_x2      = 2    # for all two-winding transformers.
+	flag_x3      = 2    # for all three-winding transformers
 	flag_swsh    = 1    # in-service
 	flag_brflow  = 2    # in-service
 	owner_brflow = 1    # bus, ignored if sid is -ve
@@ -321,5 +378,8 @@ if __name__ == '__main__':
 	load_data_dict = get_load_data()
 	allbus_data_dict = set_bus_data_dict(bus_data_dict, load_data_dict)
 	add_data_excel(allbus_data_dict, excel_file, 'BUS')
+
+	x3Trans_data_dict = get_X3_data()
+	add_data_excel(x3Trans_data_dict, excel_file, 'TRF3')
 
 
